@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.1] - 2026-10-22 (build 7)
+
+Opens again.
+
+- Fixed: ShotDrop closed as soon as it opened (since 0.4). A part of the photo tools that starts with the app was being trimmed out of the release build.
+
 ## [0.5.0] - 2026-10-22 (build 6)
 
 Four tabs, and a shortlist.
