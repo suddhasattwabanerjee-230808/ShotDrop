@@ -145,6 +145,7 @@ class _GridScreenState extends State<GridScreen> {
                                 selected: _selected.contains(s.id),
                                 selecting: _selecting,
                                 queued: scope.uploads.contains(s.id),
+                                posted: scope.uploads.isPublished(s.id),
                                 onTap: () => _selecting ? _toggle(s) : openViewer(context, shots, shots.indexOf(s)),
                                 onLongPress: () => _toggle(s),
                               );
@@ -214,12 +215,13 @@ class _Tile extends StatelessWidget {
     required this.selected,
     required this.selecting,
     required this.queued,
+    required this.posted,
     required this.onTap,
     required this.onLongPress,
   });
 
   final CardShot shot;
-  final bool selected, selecting, queued;
+  final bool selected, selecting, queued, posted;
   final VoidCallback onTap, onLongPress;
 
   @override
@@ -251,6 +253,12 @@ class _Tile extends StatelessWidget {
               left: 6,
               bottom: 6,
               child: PhotoBadge(label: 'READY', icon: Icons.check_rounded, color: positive, fg: Color(0xFF06210F)),
+            )
+          else if (posted)
+            const Positioned(
+              left: 6,
+              bottom: 6,
+              child: PhotoBadge(label: 'POSTED', icon: Icons.send_rounded),
             ),
           if (selecting)
             Positioned(

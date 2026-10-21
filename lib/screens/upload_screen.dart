@@ -8,6 +8,8 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
+import 'publish_screen.dart';
+import 'setup_screen.dart';
 
 /// The Upload folder: edited photos in posting order (drag to reorder, swipe
 /// to remove, tap to edit again), the caption, and the way out to Instagram.
@@ -58,7 +60,17 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
     return Scaffold(
-      appBar: AppBar(title: const Text('Upload folder')),
+      appBar: AppBar(
+        title: const Text('Upload folder'),
+        actions: [
+          IconButton(
+            tooltip: 'Instagram & Facebook',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SetupScreen())),
+            icon: const Icon(Icons.manage_accounts_rounded),
+          ),
+          const SizedBox(width: 4),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
@@ -144,11 +156,11 @@ class _UploadScreenState extends State<UploadScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: FilledButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Posting to Instagram comes in the next build. Your photos are saved here.'),
-                  ),
-                ),
+                onPressed: () async {
+                  _saveCaption?.cancel();
+                  await uploads.setCaption(_caption.text);
+                  if (context.mounted) await showPublishSheet(context);
+                },
                 icon: const Icon(Icons.send_rounded),
                 label: Text('Publish $n ${n == 1 ? 'photo' : 'photos'}'),
               ),

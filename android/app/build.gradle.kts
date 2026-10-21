@@ -69,3 +69,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // FileProvider, for handing edited photos to Instagram / Facebook.
+    implementation("androidx.core:core:1.13.1")
+}

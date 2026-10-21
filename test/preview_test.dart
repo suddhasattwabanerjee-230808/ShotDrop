@@ -165,6 +165,14 @@ void main() {
         return null;
       },
     );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('shotdrop/share'),
+      (call) async => switch (call.method) {
+        'apps' => {'instagram': true, 'facebook': true},
+        'share' => 'launched',
+        _ => null,
+      },
+    );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockStreamHandler(
       const EventChannel('shotdrop/card/events'),
       MockStreamHandler.inline(onListen: (_, _) {}),
@@ -173,6 +181,7 @@ void main() {
     tester.view.devicePixelRatio = 2.75;
     late CardStore card;
     late UploadStore uploads;
+    late SocialSettings social;
     await tester.runAsync(() async {
       await _loadFonts();
       for (final (path, w, h, seed) in _pending) {
@@ -180,15 +189,21 @@ void main() {
       }
       card = CardStore();
       uploads = UploadStore(dir: Directory('${tmp.path}/app'));
+      social = SocialSettings();
+      await social.load();
       await card.load();
     });
 
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('preview-root'),
-        child: ShotDropApp(card: card, uploads: uploads),
+        child: ShotDropApp(card: card, uploads: uploads, social: social),
       ),
     );
+    await shot(tester, '0_setup');
+    await tester.enterText(find.byType(TextField), 'bittu.shoots');
+    await tester.tap(find.text('Continue'));
+    await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '1_grid');
 
     // Select a few
@@ -218,10 +233,53 @@ void main() {
     await shot(tester, '6_editor_adjust');
 
     await tester.tap(find.text('Done'));
+    // The export is real work: wait for the editor to close by itself.
+    await tester.runAsync(() async {
+      for (var i = 0; i < 100 && find.byType(EditorScreen).evaluate().isNotEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    });
+    expect(find.byType(EditorScreen), findsNothing);
     await shot(tester, '7_after_done_viewer');
 
     nav.push(MaterialPageRoute<void>(builder: (_) => const UploadScreen()));
     await shot(tester, '8_upload_folder');
+
+    await tester.enterText(find.byType(TextField), 'Golden hour at the Rann of Kutch #nikon #d5600');
+    await tester.tap(find.textContaining('Publish 1'));
+    await shot(tester, '9_publish_sheet');
+    await tester.tap(find.text('Post + Story'));
+    await tester.pump();
+    await shot(tester, '9b_publish_sheet_post_story');
+    await tester.tap(find.text('Start'));
+    await shot(tester, '10_publish_post_step');
+    await tester.tap(find.text('Open Instagram'));
+    await shot(tester, '11_publish_post_asking');
+    await tester.tap(find.text("Yes, it's posted"));
+    await shot(tester, '11b_publish_facebook_step');
+    await tester.tap(find.text('Open Facebook'));
+    await shot(tester, '11c_publish_facebook_asking');
+    await tester.tap(find.text("Yes, it's posted"));
+    await shot(tester, '12_publish_story_step');
+    await tester.tap(find.text('Open Instagram'));
+    // The story render (blur at 1080 x 1920) is slow on the test renderer.
+    await tester.runAsync(() async {
+      for (var i = 0; i < 300 && find.text("Yes, it's posted").evaluate().isEmpty; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    });
+    await shot(tester, '13_publish_story_asking');
+    await tester.tap(find.text("Yes, it's posted"));
+    await shot(tester, '14_publish_done');
+    await tester.runAsync(() async {
+      final story = Directory('${tmp.path}/app/uploads')
+          .listSync()
+          .whereType<File>()
+          .firstWhere((f) => f.path.endsWith('-story.jpg'));
+      story.copySync('$outDir/15_story_render.png');
+    });
   });
 }
 

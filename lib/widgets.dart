@@ -9,15 +9,17 @@ import 'theme.dart';
 
 /// The app's two stores, reachable from any screen.
 class AppScope extends InheritedWidget {
-  const AppScope({super.key, required this.card, required this.uploads, required super.child});
+  const AppScope({super.key, required this.card, required this.uploads, required this.social, required super.child});
 
   final CardStore card;
   final UploadStore uploads;
+  final SocialSettings social;
 
   static AppScope of(BuildContext context) => context.getInheritedWidgetOfExactType<AppScope>()!;
 
   @override
-  bool updateShouldNotify(AppScope oldWidget) => card != oldWidget.card || uploads != oldWidget.uploads;
+  bool updateShouldNotify(AppScope oldWidget) =>
+      card != oldWidget.card || uploads != oldWidget.uploads || social != oldWidget.social;
 }
 
 /// Card thumbnails asked for once per session; later requests reuse the answer.

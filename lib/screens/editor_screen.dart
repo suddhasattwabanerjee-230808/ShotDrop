@@ -164,6 +164,7 @@ class _EditorScreenState extends State<EditorScreen> {
       final bytes = await out.toByteData(format: ui.ImageByteFormat.rawRgba);
       final exportPath = await uploads.exportPathFor(target.shotId);
       await CardChannel.instance.encodeJpeg(bytes!.buffer.asUint8List(), out.width, out.height, exportPath);
+      final (width, height) = (out.width, out.height);
       out.dispose();
 
       String? galleryUri;
@@ -183,6 +184,8 @@ class _EditorScreenState extends State<EditorScreen> {
           exportPath: exportPath,
           params: _p,
           galleryUri: galleryUri,
+          width: width,
+          height: height,
         ),
       );
       _saved++;

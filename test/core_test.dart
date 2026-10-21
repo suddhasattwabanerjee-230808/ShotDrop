@@ -7,7 +7,9 @@ import 'package:shotdrop/edit/crop.dart';
 import 'package:shotdrop/edit/filters.dart';
 import 'package:shotdrop/edit/render.dart';
 import 'package:shotdrop/edit/reshape.dart';
+import 'package:shotdrop/edit/story.dart';
 import 'package:shotdrop/models.dart';
+import 'package:shotdrop/publish.dart';
 import 'package:shotdrop/stores.dart';
 
 CardFile f(String path, {int modified = 1000, int size = 10}) => CardFile(
@@ -183,6 +185,13 @@ void main() {
       expect(out.height, 75);
     });
 
+    test('story renders are 1080 x 1920 for wide and tall photos alike', () async {
+      for (final (w, h) in [(400, 500), (600, 400), (90, 200)]) {
+        final story = await renderStory(await solid(w, h));
+        expect([story.width, story.height], [1080, 1920]);
+      }
+    });
+
     test('reshape and filter keep the frame size and paint the whole frame', () async {
       final src = await solid(120, 160);
       const p = EditParams(height: 0.3, width: -0.3, filter: 'vivid');
@@ -193,6 +202,42 @@ void main() {
       for (final (x, y) in [(0, 0), (119, 0), (0, 159), (119, 159), (60, 80)]) {
         expect(bytes.getUint8((y * 120 + x) * 4 + 3), 255, reason: 'alpha at $x,$y');
       }
+    });
+  });
+
+  group('buildPlan', () {
+    final three = [
+      for (final id in ['A', 'B', 'C']) _item(id),
+    ];
+
+    test('post only is one carousel', () {
+      final plan = buildPlan(three, PublishMode.post);
+      expect(plan.map((s) => s.kind), [StepKind.instagramPost]);
+      expect(plan.single.items.map((i) => i.shotId), ['A', 'B', 'C']);
+    });
+
+    test('post + story is the carousel then a story per photo, in order', () {
+      final plan = buildPlan(three, PublishMode.postAndStory);
+      expect(plan.map((s) => s.kind), [
+        StepKind.instagramPost,
+        StepKind.instagramStory,
+        StepKind.instagramStory,
+        StepKind.instagramStory,
+      ]);
+      expect(plan.skip(1).map((s) => s.items.single.shotId), ['A', 'B', 'C']);
+    });
+
+    test('story only has no post, and Facebook only follows posts', () {
+      final plan = buildPlan(three, PublishMode.story, facebook: true);
+      expect(plan.every((s) => s.kind == StepKind.instagramStory), isTrue);
+      final withFb = buildPlan(three, PublishMode.post, facebook: true);
+      expect(withFb.map((s) => s.kind), [StepKind.instagramPost, StepKind.facebookPost]);
+    });
+
+    test('more than 10 photos split into carousels of 10', () {
+      final many = [for (var i = 0; i < 23; i++) _item('P$i')];
+      final plan = buildPlan(many, PublishMode.post);
+      expect(plan.map((s) => s.items.length), [10, 10, 3]);
     });
   });
 
@@ -228,6 +273,21 @@ void main() {
       expect(b.byShot('C')!.params.filter, 'mono');
     });
 
+    test('published photos leave the queue, and the caption clears with the last one', () async {
+      final s = UploadStore(dir: dir);
+      await s.put(item('A'));
+      await s.put(item('B'));
+      await s.setCaption('hi');
+      await s.markPublished(['A']);
+      expect(s.queued.map((i) => i.shotId), ['B']);
+      expect(s.isPublished('A'), isTrue);
+      expect(s.contains('A'), isFalse);
+      expect(s.caption, 'hi');
+      await s.markPublished(['B']);
+      expect(s.queued, isEmpty);
+      expect(s.caption, '');
+    });
+
     test('re-editing replaces the item in place and deletes the old export', () async {
       final s = UploadStore(dir: dir);
       final first = item('A');
@@ -241,3 +301,12 @@ void main() {
     });
   });
 }
+
+UploadItem _item(String id) => UploadItem(
+  shotId: id,
+  name: id,
+  taken: DateTime(2026),
+  sourcePath: '/s/$id.jpg',
+  exportPath: '/e/$id.jpg',
+  params: const EditParams(),
+);

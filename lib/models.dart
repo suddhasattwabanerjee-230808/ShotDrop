@@ -218,6 +218,8 @@ class UploadItem {
     required this.params,
     this.galleryUri,
     this.published = false,
+    this.width,
+    this.height,
   });
 
   final String shotId; // CardShot.id, so the grid can tick it
@@ -228,6 +230,10 @@ class UploadItem {
   final EditParams params;
   final String? galleryUri; // its copy in Pictures/ShotDrop/Upload
   final bool published;
+  final int? width, height; // of the export, in pixels
+
+  /// Width / height of the export, if known.
+  double? get aspect => width != null && height != null && height! > 0 ? width! / height! : null;
 
   UploadItem copyWith({String? exportPath, EditParams? params, String? galleryUri, bool? published}) => UploadItem(
     shotId: shotId,
@@ -238,6 +244,8 @@ class UploadItem {
     params: params ?? this.params,
     galleryUri: galleryUri ?? this.galleryUri,
     published: published ?? this.published,
+    width: width,
+    height: height,
   );
 
   Map<String, Object?> toJson() => {
@@ -249,6 +257,8 @@ class UploadItem {
     'params': params.toJson(),
     'galleryUri': galleryUri,
     'published': published,
+    'width': width,
+    'height': height,
   };
 
   factory UploadItem.fromJson(Map<String, Object?> j) => UploadItem(
@@ -260,5 +270,7 @@ class UploadItem {
     params: EditParams.fromJson((j['params'] as Map).cast<String, Object?>()),
     galleryUri: j['galleryUri'] as String?,
     published: j['published'] == true,
+    width: (j['width'] as num?)?.toInt(),
+    height: (j['height'] as num?)?.toInt(),
   );
 }

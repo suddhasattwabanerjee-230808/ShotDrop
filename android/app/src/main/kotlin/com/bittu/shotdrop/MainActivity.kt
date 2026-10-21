@@ -6,10 +6,12 @@ import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
     private var card: CardChannel? = null
+    private var share: ShareChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         card = CardChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        share = ShareChannel(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     @Deprecated("Deprecated in Java")
@@ -21,6 +23,8 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         card?.dispose()
         card = null
+        share?.dispose()
+        share = null
         super.onDestroy()
     }
 }

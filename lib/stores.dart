@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'card_channel.dart';
 import 'models.dart';
+import 'share_channel.dart';
 
 enum CardState { noFolder, waiting, loading, ready, error }
 
@@ -103,6 +104,7 @@ class UploadStore extends ChangeNotifier {
       if (!i.published) i,
   ];
   bool contains(String shotId) => items.any((i) => i.shotId == shotId && !i.published);
+  bool isPublished(String shotId) => items.any((i) => i.shotId == shotId && i.published);
   UploadItem? byShot(String shotId) {
     for (final i in items) {
       if (i.shotId == shotId) return i;
@@ -185,6 +187,23 @@ class UploadStore extends ChangeNotifier {
     await _save();
   }
 
+  /// Marks photos as posted: they leave the queue (the grid shows them as
+  /// POSTED) and their gallery copies move to Pictures/ShotDrop/Published.
+  /// The caption is cleared once nothing is left to post.
+  Future<void> markPublished(Iterable<String> shotIds) async {
+    final ids = shotIds.toSet();
+    items = [for (final i in items) ids.contains(i.shotId) ? i.copyWith(published: true) : i];
+    if (queued.isEmpty) caption = '';
+    notifyListeners();
+    await _save();
+    for (final i in items) {
+      final g = i.galleryUri;
+      if (ids.contains(i.shotId) && g != null) {
+        ShareChannel.instance.moveInGallery(g, 'ShotDrop/Published').catchError((Object _) {});
+      }
+    }
+  }
+
   Future<void> setCaption(String text) async {
     caption = text;
     await _save();
@@ -192,5 +211,42 @@ class UploadStore extends ChangeNotifier {
 
   static void _deleteQuietly(String path) {
     File(path).delete().then((_) {}, onError: (Object _) {});
+  }
+}
+
+/// The Instagram / Facebook side: who's posting, and whether Instagram
+/// already shares posts to Facebook by itself (Accounts Center).
+class SocialSettings extends ChangeNotifier {
+  static const _handleKey = 'shotdrop.ig_handle.v1';
+  static const _fbShareKey = 'shotdrop.fb_cross_post.v1';
+  static const _setupKey = 'shotdrop.social_setup_seen.v1';
+
+  String handle = '';
+  bool instagramSharesToFacebook = false;
+  bool setupSeen = false;
+
+  Future<void> load() async {
+    final prefs = SharedPreferencesAsync();
+    handle = await prefs.getString(_handleKey).catchError((Object _) => null) ?? '';
+    instagramSharesToFacebook = await prefs.getBool(_fbShareKey).catchError((Object _) => null) ?? false;
+    setupSeen = await prefs.getBool(_setupKey).catchError((Object _) => null) ?? false;
+    notifyListeners();
+  }
+
+  Future<void> save({String? handle, bool? instagramSharesToFacebook, bool? setupSeen}) async {
+    final prefs = SharedPreferencesAsync();
+    if (handle != null) {
+      this.handle = handle.trim().replaceFirst(RegExp(r'^@+'), '');
+      await prefs.setString(_handleKey, this.handle).catchError((Object _) {});
+    }
+    if (instagramSharesToFacebook != null) {
+      this.instagramSharesToFacebook = instagramSharesToFacebook;
+      await prefs.setBool(_fbShareKey, instagramSharesToFacebook).catchError((Object _) {});
+    }
+    if (setupSeen != null) {
+      this.setupSeen = setupSeen;
+      await prefs.setBool(_setupKey, setupSeen).catchError((Object _) {});
+    }
+    notifyListeners();
   }
 }
