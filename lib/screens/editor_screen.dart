@@ -394,7 +394,7 @@ class _EditorScreenState extends State<EditorScreen> {
           ? BodyStage(image: cropped, params: _p, tool: _bodyTool, onLive: _live, onCommit: _commit)
           : LayoutBuilder(
               builder: (context, box) {
-                final size = finishedSize(Size(cropped.width.toDouble(), cropped.height.toDouble()), _p);
+                final size = Size(cropped.width.toDouble(), cropped.height.toDouble());
                 return CustomPaint(
                   painter: _FinishPainter(cropped, _p, fitRect(size, box.biggest, pad: 16, top: 56)),
                   size: Size.infinite,

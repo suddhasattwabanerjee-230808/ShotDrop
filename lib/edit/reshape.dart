@@ -4,10 +4,13 @@ import 'dart:ui';
 
 import 'body.dart';
 
-/// Stretch, as Cymera does it: the band [start]..[end] gets longer
-/// ([amount] > 0) and the photo grows by [growth] to make room, so nothing
-/// outside the band changes size. [map] gives positions as 0..1 of the grown
-/// photo. The band edges fade in over [feather], so there's no visible seam.
+/// A smooth, monotonic remap of 0..1 onto 0..1 that makes the band
+/// [start]..[end] longer ([amount] > 0) or shorter ([amount] < 0) and spreads
+/// the opposite change over the rest of the line, so the ends stay put.
+///
+/// This is how "taller / thinner" works: the person's band is stretched or
+/// squeezed and the background around them gives up or takes the slack. The
+/// band edges fade in over [feather], so there's no visible seam.
 class BandWarp {
   BandWarp(double start, double end, this.amount, {this.feather = 0.06})
     : start = math.min(start, end).clamp(0.0, 1.0),
@@ -23,15 +26,11 @@ class BandWarp {
     for (var i = 1; i <= _steps; i++) {
       _table[i] /= sum;
     }
-    growth = sum / _steps;
   }
 
   final double start, end, amount, feather;
   static const _steps = 512;
   final _table = Float64List(_steps + 1);
-
-  /// Height of the stretched photo over the original's.
-  late final double growth;
 
   bool get isIdentity => amount.abs() < 1e-4 || end - start < 1e-4;
 
@@ -69,7 +68,7 @@ class BandWarp {
 }
 
 /// A textured triangle mesh that draws a [srcSize] image into [outSize],
-/// stretched down by [yWarp] and moved by the [local] warps (all in
+/// stretched down by [yWarp] and pushed across by the [local] warps (all in
 /// normalized coordinates of the image). Draw it with a Paint whose shader is
 /// an ImageShader of the image (texture coordinates are in image pixels).
 Vertices buildWarpMesh(
@@ -85,16 +84,18 @@ Vertices buildWarpMesh(
   var k = 0;
   for (var r = 0; r <= rows; r++) {
     final v = r / rows;
+    final y = yWarp.map(v) * outSize.height;
     for (var c = 0; c <= cols; c++) {
       final u = c / cols;
-      var x = u, y = v;
+      var x = u;
       // The frame's edges stay put, so nothing pulls in from outside it.
-      for (final w in local) {
-        if (c > 0 && c < cols) x += w.dx(u, v);
-        if (r > 0 && r < rows) y += w.dy(u, v);
+      if (c > 0 && c < cols) {
+        for (final w in local) {
+          x += w.dx(u, v);
+        }
       }
       positions[k] = x.clamp(0.0, 1.0) * outSize.width;
-      positions[k + 1] = yWarp.map(y.clamp(0.0, 1.0)) * outSize.height;
+      positions[k + 1] = y;
       tex[k] = u * srcSize.width;
       tex[k + 1] = v * srcSize.height;
       k += 2;
@@ -120,14 +121,10 @@ Vertices buildWarpMesh(
   return Vertices.raw(VertexMode.triangles, positions, textureCoordinates: tex, indices: indices);
 }
 
-/// The Slim, Hip and Legs warps an edit asks for. Legs slides each leg in
-/// towards the other, closing the gap at the knees (straighter legs).
-List<LocalWarp> bodyWarps(double slim, double hips, double legs, BodyAnchors body) {
-  final mid = body.legs.map((l) => l.cx).reduce((a, b) => a + b) / body.legs.length;
-  return [
-    if (slim > 0) LocalWarp(body.waist, slim * maxSlim),
-    if (hips > 0) LocalWarp(body.hips, hips * maxHips, lift: hips * maxHipLift),
-    if (legs > 0)
-      for (final leg in body.legs) LocalWarp(leg, 0, shift: legs * maxLegs * (mid - leg.cx).sign),
-  ];
-}
+/// The Slim, Hip and Legs warps an edit asks for.
+List<LocalWarp> bodyWarps(double slim, double hips, double legs, BodyAnchors body) => [
+  if (slim > 0) LocalWarp(body.waist, slim * maxSlim),
+  if (hips > 0) LocalWarp(body.hips, hips * maxHips),
+  if (legs > 0)
+    for (final leg in body.legs) LocalWarp(leg, legs * maxLegs),
+];

@@ -256,7 +256,7 @@ void main() {
 
     await tester.tap(find.text('Body'));
     await shot(tester, '5_editor_body');
-    for (final (tool, name) in [('Slim', '5b_slim'), ('Hip', '5c_hip'), ('Legs', '5c2_legs'), ('Stretch', '5d_stretch')]) {
+    for (final (tool, name) in [('Slim', '5b_slim'), ('Hip', '5c_hip'), ('Stretch', '5d_stretch')]) {
       await tester.tap(find.text(tool));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.drag(find.byType(Slider), const Offset(400, 0)); // to 100

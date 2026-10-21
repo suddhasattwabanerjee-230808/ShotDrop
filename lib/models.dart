@@ -124,8 +124,8 @@ class EditParams {
   final AspectPreset aspect;
 
   /// Body tools. Stretch: [height] > 0 makes [heightBand] (top..bottom, 0..1
-  /// of the cropped photo) longer, and the photo grows taller to fit it, as
-  /// in Cymera (so a 4:5 crop ends up taller than 4:5).
+  /// of the cropped photo) longer, and the rest of the photo gives up the
+  /// space, so the frame (and the shape picked for Instagram) stays the same.
   /// Slim / Hip / Legs: [slim], [hips], [legs] are slider values 0..1, acting
   /// on the areas in [body] (null = BodyAnchors.defaults).
   final double height;

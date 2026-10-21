@@ -1,14 +1,5 @@
 # Changelog
 
-## [0.4.0] - 2026-10-22 (build 4)
-
-Body tools that work the way Cymera's do.
-
-- **Stretch** makes the photo taller: the part between the two lines gets longer and nothing else changes size. A stretched 4:5 photo ends up taller than Instagram's post shape, so Instagram crops it a little (the Publish screen tells you; stories are fine).
-- **Hip** now lifts the hips as well as rounding them out.
-- **Legs** straightens bowed legs: it brings the knees in towards each other while the hips and ankles stay put. It used to make the legs slimmer.
-- New icons for Hip and Legs.
-
 ## [0.3.0] - 2026-10-21 (build 3)
 
 Body tools, Cymera-style.

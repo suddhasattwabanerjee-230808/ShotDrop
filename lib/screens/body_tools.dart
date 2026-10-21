@@ -14,8 +14,8 @@ import '../theme.dart';
 enum BodyTool {
   stretch('Stretch', 'Longer legs, taller look'),
   slim('Slim', 'Draws the waist in'),
-  hips('Hip', 'Fuller, lifted hips'),
-  legs('Legs', 'Straightens bowed legs');
+  hips('Hip', 'Fuller hips'),
+  legs('Legs', 'Slimmer legs');
 
   const BodyTool(this.label, this.hint);
   final String label, hint;
@@ -90,10 +90,10 @@ class _BodyStageState extends State<BodyStage> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final p = widget.params;
-      final size = finishedSize(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), p);
+      final size = Size(widget.image.width.toDouble(), widget.image.height.toDouble());
       final rect = fitRect(size, box.biggest, pad: 16, top: widget.top);
-      final yWarp = stretchWarp(p);
+      final p = widget.params;
+      final yWarp = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
       return GestureDetector(
         onPanStart: (d) {
           final pos = d.localPosition;
@@ -486,7 +486,7 @@ class _ToolIcon extends CustomPainter {
         canvas.drawLine(const Offset(50, 27), const Offset(41, 27), p);
         arrowHead(const Offset(40, 27), const Offset(-1, 0));
       case BodyTool.hips:
-        // Waist curving out into hips, with an arrow lifting them.
+        // Waist curving out into hips.
         canvas.drawPath(
           Path()
             ..moveTo(16, 6)
@@ -505,23 +505,27 @@ class _ToolIcon extends CustomPainter {
             ..quadraticBezierTo(26, 42, 38, 32),
           p,
         );
-        canvas.drawLine(const Offset(26, 30), const Offset(26, 18), p);
-        arrowHead(const Offset(26, 17), const Offset(0, -1));
+        canvas.drawCircle(const Offset(26, 22), 1.2, p);
       case BodyTool.legs:
-        // Two bowed legs, with arrows bringing the knees in.
-        for (final x in [16.0, 36.0]) {
-          final o = x < 26 ? -1.0 : 1.0;
-          canvas.drawPath(
-            Path()
-              ..moveTo(x, 4)
-              ..quadraticBezierTo(x + o * 7, 26, x, 48),
-            p,
-          );
+        // A leg in profile, with sparkles.
+        canvas.drawPath(
+          Path()
+            ..moveTo(22, 4)
+            ..cubicTo(26, 16, 20, 26, 24, 36)
+            ..cubicTo(26, 42, 22, 46, 30, 47),
+          p,
+        );
+        canvas.drawPath(
+          Path()
+            ..moveTo(32, 4)
+            ..cubicTo(34, 16, 30, 26, 32, 36)
+            ..cubicTo(33, 42, 34, 44, 40, 47),
+          p,
+        );
+        for (final c in [const Offset(12, 14), const Offset(44, 26)]) {
+          canvas.drawLine(c - const Offset(4, 0), c + const Offset(4, 0), p);
+          canvas.drawLine(c - const Offset(0, 4), c + const Offset(0, 4), p);
         }
-        canvas.drawLine(const Offset(2, 26), const Offset(8, 26), p);
-        arrowHead(const Offset(9, 26), const Offset(1, 0));
-        canvas.drawLine(const Offset(50, 26), const Offset(44, 26), p);
-        arrowHead(const Offset(43, 26), const Offset(-1, 0));
     }
   }
 
