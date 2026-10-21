@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1] - 2026-10-22 (build 5)
+
+A much smaller download.
+
+- The APK is about a third of the size: it no longer carries code for kinds of phone it never runs on, and what it carries is compressed.
+- Nothing else changes.
+
 ## [0.4.0] - 2026-10-22 (build 4)
 
 Slim like Cymera's, and a smoother day-to-day.

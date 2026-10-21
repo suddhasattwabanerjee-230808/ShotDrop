@@ -55,7 +55,19 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName(if (canSignRelease) "release" else "debug")
-            ndk { abiFilters.add("arm64-v8a") }
+        }
+    }
+
+    // Keeps the APK small (0.4.0 was 56 MB, mostly native code):
+    // - Every phone this goes on is 64-bit ARM, but ML Kit ships its native
+    //   engine for 32-bit ARM and x86_64 too, and Flutter's plugin adds those
+    //   ABIs back to any abiFilters set here, so they're dropped at packaging.
+    // - Native code is stored compressed (Android unpacks it on install)
+    //   rather than uncompressed, which is most of the download.
+    packaging {
+        jniLibs {
+            excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")
+            useLegacyPackaging = true
         }
     }
 }
