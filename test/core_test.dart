@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shotdrop/edit/body.dart';
 import 'package:shotdrop/edit/crop.dart';
 import 'package:shotdrop/edit/filters.dart';
 import 'package:shotdrop/edit/render.dart';
@@ -54,8 +55,16 @@ void main() {
       aspect: AspectPreset.portrait,
       height: 0.2,
       heightBand: (0.4, 0.95),
-      width: -0.1,
-      widthBand: (0.2, 0.6),
+      slim: 0.6,
+      hips: 0.2,
+      legs: 0.9,
+      body: BodyAnchors(
+        waist: BodyArea(0.5, 0.4, 0.2, 0.1),
+        hips: BodyArea(0.5, 0.55, 0.22, 0.08),
+        legs: [BodyArea(0.42, 0.8, 0.06, 0.15), BodyArea(0.58, 0.8, 0.06, 0.15)],
+        legBand: (0.55, 0.97),
+        found: true,
+      ),
       filter: 'film',
       warmth: 0.3,
     );
@@ -129,6 +138,71 @@ void main() {
     });
   });
 
+  group('body tools', () {
+    // A person standing in the middle: shoulders at y 0.25, hips at 0.5, ankles at 0.9.
+    final standing = <int, (double, double, double)>{
+      11: (0.42, 0.25, 0.99),
+      12: (0.58, 0.25, 0.99),
+      23: (0.45, 0.5, 0.99),
+      24: (0.55, 0.5, 0.99),
+      25: (0.45, 0.7, 0.9),
+      26: (0.55, 0.7, 0.9),
+      27: (0.45, 0.9, 0.9),
+      28: (0.55, 0.9, 0.9),
+    };
+
+    test('pose landmarks place the waist, hips, legs and the stretch band', () {
+      final b = BodyAnchors.fromLandmarks(standing)!;
+      expect(b.found, isTrue);
+      expect(b.waist.cx, closeTo(0.5, 1e-9));
+      expect(b.waist.cy, inExclusiveRange(0.25, 0.5)); // between shoulders and hips
+      expect(b.hips.cy, greaterThanOrEqualTo(0.5));
+      expect(b.legs.map((l) => l.cx), [closeTo(0.45, 1e-9), closeTo(0.55, 1e-9)]);
+      expect(b.legBand!.$1, closeTo(0.5, 1e-9));
+      expect(b.legBand!.$2, closeTo(0.9, 1e-9));
+    });
+
+    test('no clear shoulders or hips means no body', () {
+      expect(BodyAnchors.fromLandmarks({...standing, 11: (0.42, 0.25, 0.2)}), isNull);
+      expect(BodyAnchors.fromLandmarks(const {}), isNull);
+    });
+
+    test('hidden legs are guessed down from the hips', () {
+      final b = BodyAnchors.fromLandmarks({for (final e in standing.entries) if (e.key < 25) e.key: e.value})!;
+      expect(b.legs, hasLength(2));
+      expect(b.legs.first.cy, greaterThan(0.5));
+    });
+
+    test('anchors survive JSON', () {
+      final b = BodyAnchors.fromLandmarks(standing)!;
+      final back = BodyAnchors.fromJson(b.toJson())!;
+      expect(back.toJson(), b.toJson());
+    });
+
+    test('slim pulls the waist edges in, leaves far-away pixels alone, and never folds over', () {
+      const area = BodyArea(0.5, 0.4, 0.2, 0.12);
+      final slim = LocalWarp(area, maxSlim);
+      expect(slim.dx(0.4, 0.4), greaterThan(0)); // left edge moves right (inwards)
+      expect(slim.dx(0.6, 0.4), lessThan(0)); // right edge moves left
+      expect(slim.dx(0.5, 0.4), 0); // the centre line stays
+      expect(slim.dx(0.5, 0.95).abs(), lessThan(1e-6)); // far below: untouched
+      for (final w in [slim, LocalWarp(area, maxHips)]) {
+        var last = -1.0;
+        for (var i = 0; i <= 400; i++) {
+          final x = i / 400;
+          final moved = x + w.dx(x, 0.4);
+          expect(moved, greaterThan(last));
+          last = moved;
+        }
+      }
+    });
+
+    test('sliders at zero add no warps', () {
+      expect(bodyWarps(0, 0, 0, BodyAnchors.defaults), isEmpty);
+      expect(bodyWarps(1, 1, 1, BodyAnchors.defaults), hasLength(4)); // waist, hips, two legs
+    });
+  });
+
   group('crop', () {
     const photo = Size(3000, 2000);
 
@@ -194,7 +268,7 @@ void main() {
 
     test('reshape and filter keep the frame size and paint the whole frame', () async {
       final src = await solid(120, 160);
-      const p = EditParams(height: 0.3, width: -0.3, filter: 'vivid');
+      const p = EditParams(height: 0.3, slim: 1, hips: 1, legs: 1, filter: 'vivid');
       final out = await renderFinal(src, p);
       expect([out.width, out.height], [120, 160]);
       final bytes = (await out.toByteData(format: ui.ImageByteFormat.rawRgba))!;

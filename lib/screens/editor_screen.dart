@@ -9,10 +9,11 @@ import '../card_channel.dart';
 import '../edit/crop.dart';
 import '../edit/filters.dart';
 import '../edit/render.dart';
-import '../edit/reshape.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../pose_channel.dart';
 import '../widgets.dart';
+import 'body_tools.dart';
 
 /// A photo to edit: straight from the card, or one already in the Upload folder.
 class EditTarget {
@@ -63,6 +64,12 @@ class _EditorScreenState extends State<EditorScreen> {
   _Tool _tool = _Tool.crop;
   bool _comparing = false;
 
+  // Body tab: the tool that's open (with its Cancel / Apply), and the person found in the photo.
+  BodyTool? _bodyTool;
+  EditParams? _beforeTool;
+  PoseStatus _pose = PoseStatus.detecting;
+  String? _poseFor; // the crop the pose was found in
+
   // The cropped preview the Body and Adjust tools draw on; rebuilt when the crop changes.
   ui.Image? _cropped;
   String? _croppedFor;
@@ -94,6 +101,9 @@ class _EditorScreenState extends State<EditorScreen> {
       _status = 'Opening…';
       _error = null;
       _tool = _Tool.crop;
+      _bodyTool = null;
+      _poseFor = null;
+      _pose = PoseStatus.detecting;
     });
     try {
       final path = target.existing?.sourcePath ?? await uploads.sourcePathFor(target.shotId);
@@ -275,11 +285,41 @@ class _EditorScreenState extends State<EditorScreen> {
     });
   }
 
+  /// Looks for the person once per crop, when the Body tab is open. A found
+  /// body places Slim / Hip / Legs (and Stretch's lines, if Stretch is unused)
+  /// for the user; this isn't an undo step.
+  void _ensurePose() {
+    final cropped = _cropped, key = _croppedFor;
+    if (_tool != _Tool.body || cropped == null || key == null || key != _cropKey(_p) || _poseFor == key) return;
+    _poseFor = key;
+    _pose = PoseStatus.detecting;
+    PoseChannel.instance
+        .detect(cropped)
+        .then(
+          (body) {
+            if (!mounted || _poseFor != key) return;
+            setState(() {
+              _pose = body == null ? PoseStatus.notFound : PoseStatus.found;
+              if (body == null) return;
+              final band = body.legBand;
+              _p = _p.copyWith(body: body, heightBand: _p.height == 0 && band != null ? band : null);
+              if (_h >= 0) _history[_h] = _p;
+              final before = _beforeTool;
+              if (before != null) _beforeTool = before.copyWith(body: body);
+            });
+          },
+          onError: (Object _) {
+            if (mounted && _poseFor == key) setState(() => _pose = PoseStatus.notFound);
+          },
+        );
+  }
+
   // --- Build -----------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     _ensureCropped();
+    _ensurePose();
     final multi = widget.targets.length > 1;
     return PopScope(
       canPop: false,
@@ -312,7 +352,7 @@ class _EditorScreenState extends State<EditorScreen> {
               padding: const EdgeInsets.only(right: 12, left: 4),
               child: FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
-                onPressed: _status == null && _sourcePath != null ? _done : null,
+                onPressed: _status == null && _sourcePath != null && _bodyTool == null ? _done : null,
                 child: const Text('Done'),
               ),
             ),
@@ -350,7 +390,17 @@ class _EditorScreenState extends State<EditorScreen> {
       final cropped = _cropped;
       view = cropped == null
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : _FinishStage(image: cropped, params: _p, showBands: _tool == _Tool.body, onLive: _live, onCommit: _commit);
+          : _tool == _Tool.body
+          ? BodyStage(image: cropped, params: _p, tool: _bodyTool, onLive: _live, onCommit: _commit)
+          : LayoutBuilder(
+              builder: (context, box) {
+                final size = Size(cropped.width.toDouble(), cropped.height.toDouble());
+                return CustomPaint(
+                  painter: _FinishPainter(cropped, _p, fitRect(size, box.biggest, pad: 16, top: 56)),
+                  size: Size.infinite,
+                );
+              },
+            );
     }
     return Stack(
       fit: StackFit.expand,
@@ -438,43 +488,61 @@ class _EditorScreenState extends State<EditorScreen> {
                   onLive: _live,
                   onCommit: _commit,
                 ),
-                _Tool.body => _BodyTools(params: _p, onLive: _live, onCommit: _commit),
+                _Tool.body => BodyPanel(
+                  params: _p,
+                  tool: _bodyTool,
+                  pose: _pose,
+                  onOpen: (t) => setState(() {
+                    _bodyTool = t;
+                    _beforeTool = _p;
+                  }),
+                  onLive: _live,
+                  onCancel: () => setState(() {
+                    _p = _beforeTool ?? _p;
+                    _bodyTool = null;
+                  }),
+                  onApply: () {
+                    _bodyTool = null;
+                    _commit();
+                  },
+                ),
                 _Tool.adjust => _AdjustTools(params: _p, thumb: _cropped, onLive: _live, onCommit: _commit),
               },
             ),
           ),
-          const Divider(height: 1),
-          Row(
-            children: [
-              for (final (tool, icon, label) in const [
-                (_Tool.crop, Icons.crop_rotate_rounded, 'Crop'),
-                (_Tool.body, Icons.accessibility_new_rounded, 'Body'),
-                (_Tool.adjust, Icons.tune_rounded, 'Adjust'),
-              ])
-                Expanded(
-                  child: InkWell(
-                    onTap: () => setState(() => _tool = tool),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Column(
-                        children: [
-                          Icon(icon, color: _tool == tool ? accent : muted),
-                          const SizedBox(height: 4),
-                          Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: _tool == tool ? accent : muted,
+          if (_bodyTool == null) const Divider(height: 1),
+          if (_bodyTool == null)
+            Row(
+              children: [
+                for (final (tool, icon, label) in const [
+                  (_Tool.crop, Icons.crop_rotate_rounded, 'Crop'),
+                  (_Tool.body, Icons.accessibility_new_rounded, 'Body'),
+                  (_Tool.adjust, Icons.tune_rounded, 'Adjust'),
+                ])
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _tool = tool),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Column(
+                          children: [
+                            Icon(icon, color: _tool == tool ? accent : muted),
+                            const SizedBox(height: 4),
+                            Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: _tool == tool ? accent : muted,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     ),
@@ -484,12 +552,6 @@ class _EditorScreenState extends State<EditorScreen> {
 // --- Painters --------------------------------------------------------------------
 
 /// [content] scaled to fit [box] less [pad] all round, with [top] kept clear for the floating controls.
-Rect _fit(Size content, Size box, {double pad = 20, double top = 0}) {
-  final avail = Size(math.max(1, box.width - pad * 2), math.max(1, box.height - pad * 2 - top));
-  final s = math.min(avail.width / content.width, avail.height / content.height);
-  final w = content.width * s, h = content.height * s;
-  return Rect.fromLTWH((box.width - w) / 2, top + (box.height - top - h) / 2, w, h);
-}
 
 class _ImagePainter extends CustomPainter {
   _ImagePainter(this.image);
@@ -501,7 +563,7 @@ class _ImagePainter extends CustomPainter {
     canvas.drawImageRect(
       image,
       Offset.zero & src,
-      _fit(src, size, top: 56),
+      fitRect(src, size, top: 56),
       Paint()..filterQuality = FilterQuality.medium,
     );
   }
@@ -577,14 +639,12 @@ class _OrientedPainter extends CustomPainter {
   bool shouldRepaint(_OrientedPainter old) => old.image != image || old.params != params || old.rect != rect;
 }
 
-/// The cropped photo with the body reshape and colour applied, and the band
-/// being reshaped shown over it.
+/// The cropped photo with the body tools and colour applied (the Adjust view).
 class _FinishPainter extends CustomPainter {
-  _FinishPainter(this.image, this.params, this.rect, this.showBands);
+  _FinishPainter(this.image, this.params, this.rect);
   final ui.Image image;
   final EditParams params;
   final Rect rect;
-  final bool showBands;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -592,51 +652,10 @@ class _FinishPainter extends CustomPainter {
     canvas.translate(rect.left, rect.top);
     paintFinish(canvas, image, rect.size, params);
     canvas.restore();
-    if (!showBands) return;
-
-    final band = Paint()..color = accent.withValues(alpha: 0.08);
-    final edge = Paint()
-      ..color = accent
-      ..strokeWidth = 1.5;
-    final yw = BandWarp(params.heightBand.$1, params.heightBand.$2, params.height);
-    final xw = BandWarp(params.widthBand.$1, params.widthBand.$2, params.width);
-    final top = rect.top + yw.map(params.heightBand.$1) * rect.height;
-    final bottom = rect.top + yw.map(params.heightBand.$2) * rect.height;
-    final left = rect.left + xw.map(params.widthBand.$1) * rect.width;
-    final right = rect.left + xw.map(params.widthBand.$2) * rect.width;
-    canvas.drawRect(Rect.fromLTRB(rect.left, top, rect.right, bottom), band);
-    canvas.drawRect(Rect.fromLTRB(left, rect.top, right, rect.bottom), band);
-    for (final y in [top, bottom]) {
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), edge);
-      _pill(canvas, Offset(rect.right - 26, y), horizontal: true);
-    }
-    for (final x in [left, right]) {
-      canvas.drawLine(Offset(x, rect.top), Offset(x, rect.bottom), edge);
-      _pill(canvas, Offset(x, rect.bottom - 26), horizontal: false);
-    }
-  }
-
-  static void _pill(Canvas canvas, Offset c, {required bool horizontal}) {
-    final r = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: c, width: horizontal ? 34 : 14, height: horizontal ? 14 : 34),
-      const Radius.circular(7),
-    );
-    canvas.drawRRect(r, Paint()..color = accent);
-    final grip = Paint()
-      ..color = onAccent
-      ..strokeWidth = 1.5;
-    for (final d in [-4.0, 0.0, 4.0]) {
-      if (horizontal) {
-        canvas.drawLine(c + Offset(d, -3), c + Offset(d, 3), grip);
-      } else {
-        canvas.drawLine(c + Offset(-3, d), c + Offset(3, d), grip);
-      }
-    }
   }
 
   @override
-  bool shouldRepaint(_FinishPainter old) =>
-      old.image != image || old.params != params || old.rect != rect || old.showBands != showBands;
+  bool shouldRepaint(_FinishPainter old) => old.image != image || old.params != params || old.rect != rect;
 }
 
 // --- Stages (the big preview, with its gestures) -------------------------------------
@@ -661,7 +680,7 @@ class _CropStageState extends State<_CropStage> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
       final o = orientedSize(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), widget.params);
-      final rect = _fit(o, box.biggest, pad: 28, top: 56);
+      final rect = fitRect(o, box.biggest, pad: 28, top: 56);
       return GestureDetector(
         onPanStart: (d) {
           final c = widget.params.crop;
@@ -707,83 +726,6 @@ class _CropStageState extends State<_CropStage> {
 
   static double? _ratio(EditParams p, Size o) =>
       p.aspect == AspectPreset.original ? o.width / o.height : p.aspect.ratio;
-}
-
-class _FinishStage extends StatefulWidget {
-  const _FinishStage({
-    required this.image,
-    required this.params,
-    required this.showBands,
-    required this.onLive,
-    required this.onCommit,
-  });
-  final ui.Image image;
-  final EditParams params;
-  final bool showBands;
-  final ValueChanged<EditParams> onLive;
-  final void Function([EditParams?]) onCommit;
-
-  @override
-  State<_FinishStage> createState() => _FinishStageState();
-}
-
-class _FinishStageState extends State<_FinishStage> {
-  int? _edge; // 0 top, 1 bottom, 2 left, 3 right
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) {
-      final size = Size(widget.image.width.toDouble(), widget.image.height.toDouble());
-      final rect = _fit(size, box.biggest, pad: 16, top: 56);
-      final painter = CustomPaint(
-        painter: _FinishPainter(widget.image, widget.params, rect, widget.showBands),
-        size: Size.infinite,
-      );
-      if (!widget.showBands) return painter;
-      return GestureDetector(
-        onPanStart: (d) {
-          final p = widget.params;
-          final yw = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
-          final xw = BandWarp(p.widthBand.$1, p.widthBand.$2, p.width);
-          final pos = d.localPosition;
-          final candidates = [
-            ((rect.top + yw.map(p.heightBand.$1) * rect.height - pos.dy).abs(), 0),
-            ((rect.top + yw.map(p.heightBand.$2) * rect.height - pos.dy).abs(), 1),
-            ((rect.left + xw.map(p.widthBand.$1) * rect.width - pos.dx).abs(), 2),
-            ((rect.left + xw.map(p.widthBand.$2) * rect.width - pos.dx).abs(), 3),
-          ]..sort((a, b) => a.$1.compareTo(b.$1));
-          _edge = candidates.first.$1 < 44 ? candidates.first.$2 : null;
-          if (_edge != null) HapticFeedback.selectionClick();
-        },
-        onPanUpdate: (d) {
-          final edge = _edge;
-          if (edge == null) return;
-          final p = widget.params;
-          final pos = d.localPosition;
-          if (edge < 2) {
-            final yw = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
-            final v = yw.unmap(((pos.dy - rect.top) / rect.height).clamp(0.0, 1.0));
-            final band = edge == 0
-                ? (math.min(v, p.heightBand.$2 - 0.05), p.heightBand.$2)
-                : (p.heightBand.$1, math.max(v, p.heightBand.$1 + 0.05));
-            widget.onLive(p.copyWith(heightBand: band));
-          } else {
-            final xw = BandWarp(p.widthBand.$1, p.widthBand.$2, p.width);
-            final u = xw.unmap(((pos.dx - rect.left) / rect.width).clamp(0.0, 1.0));
-            final band = edge == 2
-                ? (math.min(u, p.widthBand.$2 - 0.05), p.widthBand.$2)
-                : (p.widthBand.$1, math.max(u, p.widthBand.$1 + 0.05));
-            widget.onLive(p.copyWith(widthBand: band));
-          }
-        },
-        onPanEnd: (_) {
-          if (_edge != null) widget.onCommit();
-          _edge = null;
-        },
-        child: painter,
-      );
-    },
-  );
 }
 
 // --- Tool panels -------------------------------------------------------------------
@@ -906,89 +848,6 @@ class _CropTools extends StatelessWidget {
       ],
     );
   }
-}
-
-class _BodyTools extends StatelessWidget {
-  const _BodyTools({required this.params, required this.onLive, required this.onCommit});
-  final EditParams params;
-  final ValueChanged<EditParams> onLive;
-  final void Function([EditParams?]) onCommit;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text(
-          'Drag the yellow lines to cover the person: the across band sets height (legs work best), '
-          'the up-down band sets width.',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600, height: 1.35),
-        ),
-        const SizedBox(height: 6),
-        _LabeledSlider(
-          leading: 'Shorter',
-          trailing: 'Taller',
-          value: params.height,
-          onChanged: (v) => onLive(params.copyWith(height: v)),
-          onEnd: onCommit,
-        ),
-        _LabeledSlider(
-          leading: 'Thinner',
-          trailing: 'Wider',
-          value: params.width,
-          onChanged: (v) => onLive(params.copyWith(width: v)),
-          onEnd: onCommit,
-        ),
-      ],
-    ),
-  );
-}
-
-class _LabeledSlider extends StatelessWidget {
-  const _LabeledSlider({
-    required this.leading,
-    required this.trailing,
-    required this.value,
-    required this.onChanged,
-    required this.onEnd,
-  });
-  final String leading, trailing;
-  final double value;
-  static const range = 0.4;
-  final ValueChanged<double> onChanged;
-  final VoidCallback onEnd;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      SizedBox(
-        width: 62,
-        child: Text(
-          leading,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted),
-        ),
-      ),
-      Expanded(
-        child: Slider(
-          min: -range,
-          max: range,
-          value: value.clamp(-range, range),
-          onChanged: (v) => onChanged(v.abs() < range * 0.03 ? 0 : v), // snaps back to "no change"
-          onChangeEnd: (_) => onEnd(),
-        ),
-      ),
-      SizedBox(
-        width: 62,
-        child: Text(
-          trailing,
-          textAlign: TextAlign.end,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: muted),
-        ),
-      ),
-    ],
-  );
 }
 
 enum _Adjust { brightness, contrast, saturation, warmth }

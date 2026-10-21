@@ -110,13 +110,16 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
                   decoration: const InputDecoration(
-                  prefixIcon: Padding(
-                    padding: EdgeInsets.only(left: 16, right: 4),
-                    child: Text('@', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: muted)),
+                    prefixIcon: Padding(
+                      padding: EdgeInsets.only(left: 16, right: 4),
+                      child: Text(
+                        '@',
+                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: muted),
+                      ),
+                    ),
+                    prefixIconConstraints: BoxConstraints(minWidth: 0, minHeight: 0),
+                    hintText: 'yourname',
                   ),
-                  prefixIconConstraints: BoxConstraints(minWidth: 0, minHeight: 0),
-                  hintText: 'yourname',
-                ),
                   onSubmitted: (v) => _social.save(handle: v),
                 ),
               ],
@@ -252,7 +255,10 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     color: surface,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: line)),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(20),
+      side: const BorderSide(color: line),
+    ),
     child: Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),

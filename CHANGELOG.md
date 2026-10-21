@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0] - 2026-10-21 (build 3)
+
+Body tools, Cymera-style.
+
+- The Body tab has four tools, each opened on its own with a 0–100 slider and Cancel / Apply: **Stretch** (longer legs, taller look), **Slim** (draws the waist in), **Hip** (fuller hips), **Legs** (slimmer legs).
+- ShotDrop finds the person in the photo by itself (on the phone, offline) and puts each tool in the right place: the waist for Slim, the hips for Hip, each leg for Legs, and Stretch's two lines from the hips to the ankles.
+- Each tool's area shows as a dashed circle you can drag if it's off, or if no person is found.
+- Replaces the old Taller/Shorter and Thinner/Wider sliders.
+
 ## [0.2.0] - 2026-10-21 (build 2)
 
 Publishing.

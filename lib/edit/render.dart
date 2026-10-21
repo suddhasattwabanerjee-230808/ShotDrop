@@ -76,14 +76,14 @@ void paintFinish(Canvas canvas, ui.Image cropped, Size out, EditParams p, {bool 
   final paint = Paint()..filterQuality = FilterQuality.high;
   if (colour && !isIdentity(matrix)) paint.colorFilter = ColorFilter.matrix(matrix);
   final src = Size(cropped.width.toDouble(), cropped.height.toDouble());
-  final xWarp = BandWarp(p.widthBand.$1, p.widthBand.$2, p.width);
   final yWarp = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
-  if (xWarp.isIdentity && yWarp.isIdentity) {
+  final local = bodyWarps(p.slim, p.hips, p.legs, p.bodyOrDefault);
+  if (yWarp.isIdentity && local.isEmpty) {
     canvas.drawImageRect(cropped, Offset.zero & src, Offset.zero & out, paint);
     return;
   }
   paint.shader = ImageShader(cropped, TileMode.clamp, TileMode.clamp, _identity4, filterQuality: FilterQuality.high);
-  canvas.drawVertices(buildWarpMesh(src, out, xWarp, yWarp), BlendMode.srcOver, paint);
+  canvas.drawVertices(buildWarpMesh(src, out, yWarp, local: local), BlendMode.srcOver, paint);
 }
 
 final _identity4 = Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
@@ -109,4 +109,13 @@ Rect centeredCrop(Size o, double? ratio) {
   }
   final w = ratio / photo;
   return Rect.fromLTWH((1 - w) / 2, 0, w, 1);
+}
+
+/// [content] scaled to fit [box] less [pad] all round, with [top] kept clear
+/// (for controls floating over the photo).
+Rect fitRect(Size content, Size box, {double pad = 20, double top = 0}) {
+  final avail = Size(math.max(1, box.width - pad * 2), math.max(1, box.height - pad * 2 - top));
+  final s = math.min(avail.width / content.width, avail.height / content.height);
+  final w = content.width * s, h = content.height * s;
+  return Rect.fromLTWH((box.width - w) / 2, top + (box.height - top - h) / 2, w, h);
 }

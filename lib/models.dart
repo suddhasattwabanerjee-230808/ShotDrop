@@ -1,5 +1,7 @@
 import 'dart:ui' show Rect;
 
+import 'edit/body.dart';
+
 /// One file on the camera card, as the Android folder picker reports it.
 class CardFile {
   const CardFile({
@@ -104,8 +106,10 @@ class EditParams {
     this.aspect = AspectPreset.original,
     this.height = 0,
     this.heightBand = const (0.45, 0.9),
-    this.width = 0,
-    this.widthBand = const (0.3, 0.7),
+    this.slim = 0,
+    this.hips = 0,
+    this.legs = 0,
+    this.body,
     this.filter = 'original',
     this.brightness = 0,
     this.contrast = 0,
@@ -119,14 +123,17 @@ class EditParams {
   final Rect crop; // normalized, in the rotated + straightened photo
   final AspectPreset aspect;
 
-  /// Body reshape. [height] > 0 stretches [heightBand] (top..bottom, 0..1 of
-  /// the cropped photo) taller, < 0 shorter. [width] > 0 widens [widthBand]
-  /// (left..right), < 0 slims it. The rest of the photo absorbs the change, so
-  /// the frame (and the aspect ratio picked for Instagram) stays the same.
+  /// Body tools. Stretch: [height] > 0 makes [heightBand] (top..bottom, 0..1
+  /// of the cropped photo) longer, and the rest of the photo gives up the
+  /// space, so the frame (and the shape picked for Instagram) stays the same.
+  /// Slim / Hip / Legs: [slim], [hips], [legs] are slider values 0..1, acting
+  /// on the areas in [body] (null = BodyAnchors.defaults).
   final double height;
   final (double, double) heightBand;
-  final double width;
-  final (double, double) widthBand;
+  final double slim, hips, legs;
+  final BodyAnchors? body;
+
+  BodyAnchors get bodyOrDefault => body ?? BodyAnchors.defaults;
 
   final String filter; // a FilterPreset id
   final double brightness, contrast, saturation, warmth; // each -1..1
@@ -141,8 +148,10 @@ class EditParams {
     AspectPreset? aspect,
     double? height,
     (double, double)? heightBand,
-    double? width,
-    (double, double)? widthBand,
+    double? slim,
+    double? hips,
+    double? legs,
+    BodyAnchors? body,
     String? filter,
     double? brightness,
     double? contrast,
@@ -156,8 +165,10 @@ class EditParams {
     aspect: aspect ?? this.aspect,
     height: height ?? this.height,
     heightBand: heightBand ?? this.heightBand,
-    width: width ?? this.width,
-    widthBand: widthBand ?? this.widthBand,
+    slim: slim ?? this.slim,
+    hips: hips ?? this.hips,
+    legs: legs ?? this.legs,
+    body: body ?? this.body,
     filter: filter ?? this.filter,
     brightness: brightness ?? this.brightness,
     contrast: contrast ?? this.contrast,
@@ -173,8 +184,10 @@ class EditParams {
     'aspect': aspect.name,
     'height': height,
     'heightBand': [heightBand.$1, heightBand.$2],
-    'width': width,
-    'widthBand': [widthBand.$1, widthBand.$2],
+    'slim': slim,
+    'hips': hips,
+    'legs': legs,
+    if (body != null) 'body': body!.toJson(),
     'filter': filter,
     'brightness': brightness,
     'contrast': contrast,
@@ -187,7 +200,6 @@ class EditParams {
     List<double> list(String k) => [for (final v in (j[k] as List? ?? const [])) (v as num).toDouble()];
     final c = list('crop');
     final hb = list('heightBand');
-    final wb = list('widthBand');
     return EditParams(
       quarterTurns: (j['quarterTurns'] as num?)?.toInt() ?? 0,
       flipH: j['flipH'] == true,
@@ -196,8 +208,10 @@ class EditParams {
       aspect: AspectPreset.values.asNameMap()[j['aspect']] ?? AspectPreset.original,
       height: d('height'),
       heightBand: hb.length == 2 ? (hb[0], hb[1]) : const (0.45, 0.9),
-      width: d('width'),
-      widthBand: wb.length == 2 ? (wb[0], wb[1]) : const (0.3, 0.7),
+      slim: d('slim'),
+      hips: d('hips'),
+      legs: d('legs'),
+      body: BodyAnchors.fromJson(j['body']),
       filter: j['filter'] as String? ?? 'original',
       brightness: d('brightness'),
       contrast: d('contrast'),

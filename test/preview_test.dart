@@ -20,6 +20,25 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 const outDir = String.fromEnvironment('PREVIEW_DIR');
+// Optional: a phone screenshot with a person in it, and the y range (in
+// pixels) of the photo within it, used as the body tools' test photo.
+const realPhoto = String.fromEnvironment('REAL_PHOTO');
+const realTop = int.fromEnvironment('REAL_TOP'), realBottom = int.fromEnvironment('REAL_BOTTOM');
+
+Future<void> _cropReal(String from, String to) async {
+  final codec = await ui.instantiateImageCodec(File(from).readAsBytesSync());
+  final src = (await codec.getNextFrame()).image;
+  final h = realBottom - realTop;
+  final r = ui.PictureRecorder();
+  Canvas(r).drawImageRect(
+    src,
+    Rect.fromLTWH(0, realTop.toDouble(), src.width.toDouble(), h.toDouble()),
+    Rect.fromLTWH(0, 0, src.width.toDouble(), h.toDouble()),
+    Paint(),
+  );
+  final img = await r.endRecording().toImage(src.width, h);
+  File(to).writeAsBytesSync((await img.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List());
+}
 
 Future<void> _loadFonts() async {
   final manrope = FontLoader('Manrope');
@@ -166,6 +185,16 @@ void main() {
       },
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('shotdrop/pose'),
+      // Where the person in REAL_PHOTO is (read off the photo by eye).
+      (call) async => {
+        11: [0.29, 0.40, 0.99],
+        12: [0.74, 0.40, 0.99],
+        23: [0.37, 0.80, 0.9],
+        24: [0.66, 0.80, 0.9],
+      },
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('shotdrop/share'),
       (call) async => switch (call.method) {
         'apps' => {'instagram': true, 'facebook': true},
@@ -187,6 +216,8 @@ void main() {
       for (final (path, w, h, seed) in _pending) {
         await _writePhoto(path, w, h, seed);
       }
+      // A real photo for the body tools, if one was given: it replaces shot 2's.
+      if (realPhoto.isNotEmpty) await _cropReal(realPhoto, _pending[1].$1);
       card = CardStore();
       uploads = UploadStore(dir: Directory('${tmp.path}/app'));
       social = SocialSettings();
@@ -225,9 +256,15 @@ void main() {
 
     await tester.tap(find.text('Body'));
     await shot(tester, '5_editor_body');
-    await tester.drag(find.byType(Slider).at(0), const Offset(110, 0)); // taller
-    await tester.drag(find.byType(Slider).at(1), const Offset(-110, 0)); // thinner
-    await shot(tester, '5b_editor_body_reshaped');
+    for (final (tool, name) in [('Slim', '5b_slim'), ('Hip', '5c_hip'), ('Stretch', '5d_stretch')]) {
+      await tester.tap(find.text(tool));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.drag(find.byType(Slider), const Offset(400, 0)); // to 100
+      await shot(tester, name);
+      await tester.tap(find.text('Apply'));
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    await shot(tester, '5e_body_applied');
 
     await tester.tap(find.text('Adjust'));
     await shot(tester, '6_editor_adjust');

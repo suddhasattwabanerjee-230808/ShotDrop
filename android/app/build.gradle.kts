@@ -73,4 +73,6 @@ flutter {
 dependencies {
     // FileProvider, for handing edited photos to Instagram / Facebook.
     implementation("androidx.core:core:1.13.1")
+    // On-device pose detection for the body tools (model bundled, works offline).
+    implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
 }

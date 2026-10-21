@@ -2,6 +2,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui';
 
+import 'body.dart';
+
 /// A smooth, monotonic remap of 0..1 onto 0..1 that makes the band
 /// [start]..[end] longer ([amount] > 0) or shorter ([amount] < 0) and spreads
 /// the opposite change over the rest of the line, so the ends stay put.
@@ -65,10 +67,18 @@ class BandWarp {
   }
 }
 
-/// A textured triangle mesh that draws a [srcSize] image into [outSize] with
-/// [xWarp] applied across and [yWarp] down. Draw it with a Paint whose shader
-/// is an ImageShader of the image (texture coordinates are in image pixels).
-Vertices buildWarpMesh(Size srcSize, Size outSize, BandWarp xWarp, BandWarp yWarp, {int cols = 48, int rows = 48}) {
+/// A textured triangle mesh that draws a [srcSize] image into [outSize],
+/// stretched down by [yWarp] and pushed across by the [local] warps (all in
+/// normalized coordinates of the image). Draw it with a Paint whose shader is
+/// an ImageShader of the image (texture coordinates are in image pixels).
+Vertices buildWarpMesh(
+  Size srcSize,
+  Size outSize,
+  BandWarp yWarp, {
+  List<LocalWarp> local = const [],
+  int cols = 64,
+  int rows = 64,
+}) {
   final positions = Float32List((cols + 1) * (rows + 1) * 2);
   final tex = Float32List((cols + 1) * (rows + 1) * 2);
   var k = 0;
@@ -77,7 +87,14 @@ Vertices buildWarpMesh(Size srcSize, Size outSize, BandWarp xWarp, BandWarp yWar
     final y = yWarp.map(v) * outSize.height;
     for (var c = 0; c <= cols; c++) {
       final u = c / cols;
-      positions[k] = xWarp.map(u) * outSize.width;
+      var x = u;
+      // The frame's edges stay put, so nothing pulls in from outside it.
+      if (c > 0 && c < cols) {
+        for (final w in local) {
+          x += w.dx(u, v);
+        }
+      }
+      positions[k] = x.clamp(0.0, 1.0) * outSize.width;
       positions[k + 1] = y;
       tex[k] = u * srcSize.width;
       tex[k + 1] = v * srcSize.height;
@@ -103,3 +120,11 @@ Vertices buildWarpMesh(Size srcSize, Size outSize, BandWarp xWarp, BandWarp yWar
   }
   return Vertices.raw(VertexMode.triangles, positions, textureCoordinates: tex, indices: indices);
 }
+
+/// The Slim, Hip and Legs warps an edit asks for.
+List<LocalWarp> bodyWarps(double slim, double hips, double legs, BodyAnchors body) => [
+  if (slim > 0) LocalWarp(body.waist, slim * maxSlim),
+  if (hips > 0) LocalWarp(body.hips, hips * maxHips),
+  if (legs > 0)
+    for (final leg in body.legs) LocalWarp(leg, legs * maxLegs),
+];
