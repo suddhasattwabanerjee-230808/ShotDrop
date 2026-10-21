@@ -186,12 +186,26 @@ void main() {
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('shotdrop/pose'),
-      // Where the person in REAL_PHOTO is (read off the photo by eye).
-      (call) async => {
-        11: [0.29, 0.40, 0.99],
-        12: [0.74, 0.40, 0.99],
-        23: [0.37, 0.80, 0.9],
-        24: [0.66, 0.80, 0.9],
+      (call) async {
+        // The outline: the fake photos' figure is the only near-black thing in them.
+        final args = call.arguments as Map;
+        final rgba = args['rgba'] as Uint8List;
+        final mask = Uint8List(rgba.length ~/ 4);
+        for (var i = 0; i < mask.length; i++) {
+          if (rgba[i * 4] + rgba[i * 4 + 1] + rgba[i * 4 + 2] < 120) mask[i] = 255;
+        }
+        return {
+          // Where the person in REAL_PHOTO is (read off the photo by eye).
+          'landmarks': {
+            11: [0.29, 0.40, 0.99],
+            12: [0.74, 0.40, 0.99],
+            23: [0.37, 0.80, 0.9],
+            24: [0.66, 0.80, 0.9],
+          },
+          'mask': mask,
+          'maskWidth': args['width'],
+          'maskHeight': args['height'],
+        };
       },
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -256,7 +270,16 @@ void main() {
 
     await tester.tap(find.text('Body'));
     await shot(tester, '5_editor_body');
-    for (final (tool, name) in [('Slim', '5b_slim'), ('Hip', '5c_hip'), ('Stretch', '5d_stretch')]) {
+    await tester.tap(find.text('Slim'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await shot(tester, '5a_slim_select');
+    await tester.tap(find.byIcon(Icons.check_rounded));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.drag(find.byType(Slider), const Offset(160, 0)); // to about +0.6
+    await shot(tester, '5b_slim');
+    await tester.tap(find.text('Apply'));
+    await tester.pump(const Duration(milliseconds: 300));
+    for (final (tool, name) in [('Hip', '5c_hip'), ('Stretch', '5d_stretch')]) {
       await tester.tap(find.text(tool));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.drag(find.byType(Slider), const Offset(400, 0)); // to 100

@@ -77,13 +77,14 @@ void paintFinish(Canvas canvas, ui.Image cropped, Size out, EditParams p, {bool 
   if (colour && !isIdentity(matrix)) paint.colorFilter = ColorFilter.matrix(matrix);
   final src = Size(cropped.width.toDouble(), cropped.height.toDouble());
   final yWarp = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
-  final local = bodyWarps(p.slim, p.hips, p.legs, p.bodyOrDefault);
-  if (yWarp.isIdentity && local.isEmpty) {
+  final local = bodyWarps(p.hips, p.legs, p.bodyOrDefault);
+  final slims = [for (final s in p.slims) if (s.amount != 0) s];
+  if (yWarp.isIdentity && local.isEmpty && slims.isEmpty) {
     canvas.drawImageRect(cropped, Offset.zero & src, Offset.zero & out, paint);
     return;
   }
   paint.shader = ImageShader(cropped, TileMode.clamp, TileMode.clamp, _identity4, filterQuality: FilterQuality.high);
-  canvas.drawVertices(buildWarpMesh(src, out, yWarp, local: local), BlendMode.srcOver, paint);
+  canvas.drawVertices(buildWarpMesh(src, out, yWarp, slims: slims, local: local), BlendMode.srcOver, paint);
 }
 
 final _identity4 = Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);

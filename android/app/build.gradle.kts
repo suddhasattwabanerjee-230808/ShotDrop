@@ -75,4 +75,6 @@ dependencies {
     implementation("androidx.core:core:1.13.1")
     // On-device pose detection for the body tools (model bundled, works offline).
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
+    // On-device person outline for Slim (model bundled, works offline).
+    implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
 }

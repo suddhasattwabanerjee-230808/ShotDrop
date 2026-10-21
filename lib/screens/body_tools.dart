@@ -7,31 +7,46 @@ import 'package:flutter/services.dart';
 import '../edit/body.dart';
 import '../edit/render.dart';
 import '../edit/reshape.dart';
+import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
 
-/// The Body tab's four tools, each opened on its own with Cancel / Apply.
+/// The Body tab's four tools. Laid out like Cymera's Body screen: the
+/// open tool's slider over the row of tools, Cancel / Body / Apply below;
+/// Slim first asks for the area (a line with a bracket at each end).
 enum BodyTool {
-  stretch('Stretch', 'Longer legs, taller look'),
-  slim('Slim', 'Draws the waist in'),
-  hips('Hip', 'Fuller hips'),
-  legs('Legs', 'Slimmer legs');
+  stretch('Stretch'),
+  slim('Slim'),
+  hips('Hip'),
+  legs('Legs');
 
-  const BodyTool(this.label, this.hint);
-  final String label, hint;
+  const BodyTool(this.label);
+  final String label;
 
+  /// The slider runs -1..1 (centre = untouched) rather than 0..1:
+  /// Stretch taller / shorter, Slim slimmer / wider.
+  bool get twoWay => this == stretch || this == slim;
+
+  /// The slider's value. Slim's is the area picked last.
   double value(EditParams p) => switch (this) {
     stretch => p.height / maxStretch,
-    slim => p.slim,
+    slim => p.slims.isEmpty ? 0 : p.slims.last.amount,
     hips => p.hips,
     legs => p.legs,
   };
 
   EditParams withValue(EditParams p, double v) => switch (this) {
     stretch => p.copyWith(height: v * maxStretch),
-    slim => p.copyWith(slim: v),
+    slim =>
+      p.slims.isEmpty ? p : p.copyWith(slims: [...p.slims.sublist(0, p.slims.length - 1), p.slims.last.copyWith(amount: v)]),
     hips => p.copyWith(hips: v),
     legs => p.copyWith(legs: v),
+  };
+
+  /// Already changes the photo (marked in the row).
+  bool applied(EditParams p) => switch (this) {
+    slim => p.slims.any((s) => s.amount.abs() > 0.005),
+    _ => value(p).abs() > 0.005,
   };
 }
 
@@ -40,8 +55,9 @@ enum PoseStatus { detecting, found, notFound }
 // --- The photo, with the active tool's area over it ---------------------------------
 
 /// The finished photo (body tools and colour applied). With a tool open it
-/// shows where that tool acts: Stretch's two lines, or the area Slim / Hip /
-/// Legs reshape, all of which can be dragged.
+/// shows where that tool acts: Stretch's two lines, Slim's line and
+/// brackets while its area is being picked, or the area Hip / Legs reshape.
+/// All of them can be dragged.
 class BodyStage extends StatefulWidget {
   const BodyStage({
     super.key,
@@ -50,6 +66,9 @@ class BodyStage extends StatefulWidget {
     required this.tool,
     required this.onLive,
     required this.onCommit,
+    this.slimDraft,
+    this.onSlimDraft,
+    this.mask,
     this.top = 56,
   });
 
@@ -58,6 +77,9 @@ class BodyStage extends StatefulWidget {
   final BodyTool? tool;
   final ValueChanged<EditParams> onLive;
   final void Function([EditParams?]) onCommit;
+  final SlimArea? slimDraft; // Slim's area while it's being picked
+  final ValueChanged<SlimArea>? onSlimDraft;
+  final BodyMask? mask; // the person's outline, for snapping Slim's brackets to the body
   final double top;
 
   @override
@@ -66,11 +88,11 @@ class BodyStage extends StatefulWidget {
 
 class _BodyStageState extends State<BodyStage> {
   int? _line; // Stretch: 0 top line, 1 bottom line
-  int? _area; // Slim / Hip / Legs: which area is being moved
+  int? _area; // Hip / Legs: which area is being moved
+  int? _bracket; // Slim: 0 left, 1 right, 2 the whole line
   Offset? _last;
 
   List<BodyArea> _areas(EditParams p) => switch (widget.tool) {
-    BodyTool.slim => [p.bodyOrDefault.waist],
     BodyTool.hips => [p.bodyOrDefault.hips],
     BodyTool.legs => p.bodyOrDefault.legs,
     _ => const [],
@@ -80,11 +102,30 @@ class _BodyStageState extends State<BodyStage> {
     final body = p.bodyOrDefault;
     return p.copyWith(
       body: switch (widget.tool) {
-        BodyTool.slim => body.copyWith(waist: a),
         BodyTool.hips => body.copyWith(hips: a),
         _ => body.copyWith(legs: [for (final (j, l) in body.legs.indexed) j == i ? a : l]),
       },
     );
+  }
+
+  /// Slim's area moved by a drag of [delta] (screen pixels) on [part].
+  SlimArea _dragSlim(SlimArea s, int part, Offset pos, Offset delta, Rect rect, BandWarp yWarp) {
+    final y = yWarp.unmap(((pos.dy - rect.top) / rect.height).clamp(0.02, 0.98));
+    final x = ((pos.dx - rect.left) / rect.width).clamp(0.0, 1.0);
+    switch (part) {
+      case 0:
+        return s.copyWith(y: y, left: math.min(x, s.right - 0.04));
+      case 1:
+        return s.copyWith(y: y, right: math.max(x, s.left + 0.04));
+      default:
+        // Moving the whole line: the brackets jump to the body's edges at the
+        // new height when the outline is known, else they just come along.
+        final ny = (s.y + delta.dy / rect.height).clamp(0.02, 0.98);
+        final dx = delta.dx / rect.width;
+        final moved = s.copyWith(y: ny, left: (s.left + dx).clamp(0.0, 1.0), right: (s.right + dx).clamp(0.0, 1.0));
+        final edges = delta.dy.abs() > delta.dx.abs() ? widget.mask?.edgesAt(ny, (moved.left + moved.right) / 2) : null;
+        return edges != null && edges.$2 - edges.$1 > 0.04 ? moved.copyWith(left: edges.$1, right: edges.$2) : moved;
+    }
   }
 
   @override
@@ -94,12 +135,18 @@ class _BodyStageState extends State<BodyStage> {
       final rect = fitRect(size, box.biggest, pad: 16, top: widget.top);
       final p = widget.params;
       final yWarp = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
+      final draft = widget.slimDraft;
       return GestureDetector(
         onPanStart: (d) {
           final pos = d.localPosition;
-          _line = _area = null;
+          _line = _area = _bracket = null;
           _last = pos;
-          if (widget.tool == BodyTool.stretch) {
+          if (draft != null) {
+            final y = rect.top + yWarp.map(draft.y) * rect.height;
+            final ends = [draft.left, draft.right].map((x) => Offset(rect.left + x * rect.width, y)).toList();
+            final near = (ends[0] - pos).distance <= (ends[1] - pos).distance ? 0 : 1;
+            _bracket = (ends[near] - pos).distance < 44 ? near : 2;
+          } else if (widget.tool == BodyTool.stretch) {
             final ys = [p.heightBand.$1, p.heightBand.$2].map((v) => rect.top + yWarp.map(v) * rect.height).toList();
             final near = (ys[0] - pos.dy).abs() <= (ys[1] - pos.dy).abs() ? 0 : 1;
             if ((ys[near] - pos.dy).abs() < 48) _line = near;
@@ -115,26 +162,28 @@ class _BodyStageState extends State<BodyStage> {
               }
             }
           }
-          if (_line != null || _area != null) HapticFeedback.selectionClick();
+          if (_line != null || _area != null || (_bracket ?? 2) < 2) HapticFeedback.selectionClick();
         },
         onPanUpdate: (d) {
           final pos = d.localPosition;
-          final line = _line, area = _area;
-          if (line != null) {
+          final line = _line, area = _area, bracket = _bracket;
+          final delta = pos - (_last ?? pos);
+          if (bracket != null && draft != null) {
+            widget.onSlimDraft?.call(_dragSlim(draft, bracket, pos, delta, rect, yWarp));
+          } else if (line != null) {
             final v = yWarp.unmap(((pos.dy - rect.top) / rect.height).clamp(0.0, 1.0));
             final band = line == 0
                 ? (math.min(v, p.heightBand.$2 - 0.05), p.heightBand.$2)
                 : (p.heightBand.$1, math.max(v, p.heightBand.$1 + 0.05));
             widget.onLive(p.copyWith(heightBand: band));
           } else if (area != null) {
-            final delta = pos - (_last ?? pos);
             final a = _areas(p)[area].moved(delta.dx / rect.width, delta.dy / rect.height);
             widget.onLive(_withArea(p, area, a));
           }
           _last = pos;
         },
         onPanEnd: (_) {
-          _line = _area = null;
+          _line = _area = _bracket = null;
         },
         child: CustomPaint(
           size: Size.infinite,
@@ -142,9 +191,10 @@ class _BodyStageState extends State<BodyStage> {
             image: widget.image,
             params: p,
             rect: rect,
-            tool: widget.tool,
-            areas: _areas(p),
+            tool: draft != null ? null : widget.tool,
+            areas: draft != null ? const [] : _areas(p),
             yWarp: yWarp,
+            slimDraft: draft,
           ),
         ),
       );
@@ -160,6 +210,7 @@ class _BodyPainter extends CustomPainter {
     required this.tool,
     required this.areas,
     required this.yWarp,
+    this.slimDraft,
   });
 
   final ui.Image image;
@@ -168,6 +219,7 @@ class _BodyPainter extends CustomPainter {
   final BodyTool? tool;
   final List<BodyArea> areas;
   final BandWarp yWarp;
+  final SlimArea? slimDraft;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -176,6 +228,11 @@ class _BodyPainter extends CustomPainter {
     paintFinish(canvas, image, rect.size, params);
     canvas.restore();
 
+    final draft = slimDraft;
+    if (draft != null) {
+      _slimLine(canvas, draft);
+      return;
+    }
     final edge = Paint()
       ..color = accent
       ..strokeWidth = 1.5
@@ -204,13 +261,41 @@ class _BodyPainter extends CustomPainter {
           canvas.drawLine(Offset(x, y), Offset(x + 6, y + 7 * s), arrow);
         }
       }
-    } else if (tool != null) {
+    } else if (tool == BodyTool.hips || tool == BodyTool.legs) {
       for (final a in areas) {
         final c = Offset(rect.left + a.cx * rect.width, rect.top + yWarp.map(a.cy) * rect.height);
         final r = Rect.fromCenter(center: c, width: a.rx * rect.width * 1.4, height: a.ry * rect.height * 1.6);
         _dashedOval(canvas, r, edge);
         canvas.drawCircle(c, 9, Paint()..color = accent);
         canvas.drawCircle(c, 3.5, Paint()..color = onAccent);
+      }
+    }
+  }
+
+  /// Slim's line, with a dashed bracket at each end curving in towards the
+  /// middle ( ")———(" ), white over a soft shadow so it shows on any photo.
+  void _slimLine(Canvas canvas, SlimArea s) {
+    final y = rect.top + yWarp.map(s.y) * rect.height;
+    final l = rect.left + s.left * rect.width, r = rect.left + s.right * rect.width;
+    // The brackets' size follows the line's length, so a narrow pick stays readable.
+    final arcR = ((r - l) * 0.3).clamp(12.0, 30.0), inset = arcR * 0.75;
+    const sweep = 1.05; // half-angle of each arc
+    for (final (colour, width) in [(const Color(0x66000000), 4.5), (Colors.white, 2.5)]) {
+      final paint = Paint()
+        ..color = colour
+        ..strokeWidth = width
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(Offset(l + 10, y), Offset(r - 10, y), paint);
+      for (final (x, side) in [(l, -1.0), (r, 1.0)]) {
+        final centre = Offset(x + side * inset, y);
+        final start = side < 0 ? -sweep : math.pi - sweep;
+        final arc = Path()..addArc(Rect.fromCircle(center: centre, radius: arcR), start, sweep * 2);
+        for (final m in arc.computeMetrics()) {
+          for (var d = 0.0; d < m.length; d += 9) {
+            canvas.drawPath(m.extractPath(d, math.min(d + 5, m.length)), paint);
+          }
+        }
       }
     }
   }
@@ -237,13 +322,20 @@ class _BodyPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BodyPainter old) =>
-      old.image != image || old.params != params || old.rect != rect || old.tool != tool;
+      old.image != image ||
+      old.params != params ||
+      old.rect != rect ||
+      old.tool != tool ||
+      old.slimDraft != slimDraft;
 }
 
 // --- The panel under the photo -----------------------------------------------------
 
-/// Closed: the four tools in a row (like Cymera). Open: that tool's 0–100
-/// slider, with Cancel / Apply.
+/// Three states, as in Cymera:
+/// - no tool open: the row of tools;
+/// - Slim picking its area: a big ✓ and "Select the waist area.";
+/// - a tool open: its slider (with the value over the thumb) above the row,
+///   then Cancel / Body / Apply for everything changed since it opened.
 class BodyPanel extends StatelessWidget {
   const BodyPanel({
     super.key,
@@ -254,6 +346,9 @@ class BodyPanel extends StatelessWidget {
     required this.onLive,
     required this.onCancel,
     required this.onApply,
+    this.selecting = false,
+    this.onConfirmSlim,
+    this.onCancelSlim,
   });
 
   final EditParams params;
@@ -262,65 +357,37 @@ class BodyPanel extends StatelessWidget {
   final ValueChanged<BodyTool> onOpen;
   final ValueChanged<EditParams> onLive;
   final VoidCallback onCancel, onApply;
+  final bool selecting; // Slim's area is being picked
+  final VoidCallback? onConfirmSlim, onCancelSlim;
 
   @override
   Widget build(BuildContext context) {
     final t = tool;
+    if (selecting) return _selectStep();
+    final row = Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        for (final b in BodyTool.values)
+          _ToolButton(tool: b, selected: b == t, active: b.applied(params), onTap: () => onOpen(b)),
+      ],
+    );
     if (t == null) {
       return Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          _PoseLine(status: pose),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              for (final b in BodyTool.values)
-                _ToolButton(tool: b, active: b.value(params) > 0.005, onTap: () => onOpen(b)),
-            ],
-          ),
-          const SizedBox(height: 12),
-        ],
+        children: [_PoseLine(status: pose), const SizedBox(height: 10), row, const SizedBox(height: 12)],
       );
     }
-    final v = t.value(params).clamp(0.0, 1.0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            t == BodyTool.stretch
-                ? 'Drag the two lines to the part to lengthen (legs work best), then slide.'
-                : pose == PoseStatus.found
-                ? '${t.hint}. The circle is on the body: drag it if it\'s off.'
-                : '${t.hint}. Drag the circle onto the body, then slide.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600, height: 1.35),
-          ),
+        _ValueSlider(
+          value: t.value(params).clamp(t.twoWay ? -1.0 : 0.0, 1.0),
+          twoWay: t.twoWay,
+          onChanged: (v) => onLive(t.withValue(params, v)),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 4, 16, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Slider(
-                  value: v,
-                  onChanged: (x) => onLive(t.withValue(params, x)),
-                  onChangeStart: (_) => HapticFeedback.selectionClick(),
-                ),
-              ),
-              SizedBox(
-                width: 36,
-                child: Text(
-                  '${(v * 100).round()}',
-                  textAlign: TextAlign.end,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-                ),
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: 4),
+        row,
+        const SizedBox(height: 6),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
           child: Row(
@@ -330,11 +397,11 @@ class BodyPanel extends StatelessWidget {
                 onPressed: onCancel,
                 child: const Text('Cancel'),
               ),
-              Expanded(
+              const Expanded(
                 child: Text(
-                  t.label,
+                  'Body',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
               FilledButton(
@@ -346,6 +413,177 @@ class BodyPanel extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _selectStep() => Padding(
+    padding: const EdgeInsets.fromLTRB(8, 8, 8, 14),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            TextButton(onPressed: onCancelSlim, child: const Text('Cancel', style: TextStyle(color: muted))),
+            const Spacer(),
+            _ConfirmButton(onTap: onConfirmSlim),
+            const Spacer(),
+            const SizedBox(width: 72),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          pose == PoseStatus.found ? 'Select the waist area.' : 'Select the waist area: drag the line onto the body.',
+          style: const TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w600),
+        ),
+      ],
+    ),
+  );
+}
+
+/// The round ✓ that confirms Slim's area.
+class _ConfirmButton extends StatelessWidget {
+  const _ConfirmButton({required this.onTap});
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: accent,
+    shape: const CircleBorder(),
+    elevation: 2,
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap == null
+          ? null
+          : () {
+              HapticFeedback.mediumImpact();
+              onTap!();
+            },
+      child: const SizedBox(width: 64, height: 64, child: Icon(Icons.check_rounded, size: 34, color: onAccent)),
+    ),
+  );
+}
+
+/// "−  ———●———  +" with the value in a bubble over the thumb ("+0.55").
+/// Two-way sliders centre on 0, which is sticky so "untouched" is easy to find.
+class _ValueSlider extends StatelessWidget {
+  const _ValueSlider({required this.value, required this.twoWay, required this.onChanged});
+  final double value;
+  final bool twoWay;
+  final ValueChanged<double> onChanged;
+
+  static const _pad = 14.0; // the slider's own inset at each end of the track
+
+  @override
+  Widget build(BuildContext context) {
+    final min = twoWay ? -1.0 : 0.0;
+    final text = value > 0.005 ? '+${value.toStringAsFixed(2)}' : value.toStringAsFixed(2).replaceAll('-0.00', '0.00');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 2, 10, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Padding(padding: EdgeInsets.only(bottom: 12), child: Icon(Icons.remove_rounded, size: 20, color: muted)),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                final x = _pad + (value - min) / (1 - min) * (box.maxWidth - _pad * 2);
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 30),
+                      child: Slider(
+                        value: value,
+                        min: min,
+                        padding: const EdgeInsets.symmetric(horizontal: _pad),
+                        onChanged: (v) {
+                          if (twoWay && v.abs() < 0.04) {
+                            if (value != 0) HapticFeedback.selectionClick();
+                            v = 0;
+                          }
+                          onChanged(v);
+                        },
+                        onChangeStart: (_) => HapticFeedback.selectionClick(),
+                      ),
+                    ),
+                    Positioned(
+                      left: (x - 28).clamp(0.0, math.max(0.0, box.maxWidth - 56)),
+                      top: 0,
+                      width: 56,
+                      child: Container(
+                        height: 24,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: surfaceHigh,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: value.abs() > 0.005 ? accent : line),
+                        ),
+                        child: Text(
+                          text,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: value.abs() > 0.005 ? accent : muted,
+                            fontFeatures: const [ui.FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          const Padding(padding: EdgeInsets.only(bottom: 12), child: Icon(Icons.add_rounded, size: 20, color: muted)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToolButton extends StatelessWidget {
+  const _ToolButton({required this.tool, required this.selected, required this.active, required this.onTap});
+  final BodyTool tool;
+  final bool selected; // the tool that's open
+  final bool active; // already applied to this photo
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colour = selected ? accent : ink;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? accent.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CustomPaint(size: const Size(52, 52), painter: _ToolIcon(tool, colour)),
+                if (active)
+                  Positioned(
+                    right: -4,
+                    top: -2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(color: accent, shape: BoxShape.circle),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(tool.label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: colour)),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -376,47 +614,6 @@ class _PoseLine extends StatelessWidget {
       ],
     );
   }
-}
-
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.tool, required this.active, required this.onTap});
-  final BodyTool tool;
-  final bool active; // already applied to this photo
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(14),
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: Column(
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              CustomPaint(size: const Size(52, 52), painter: _ToolIcon(tool, active ? accent : ink)),
-              if (active)
-                Positioned(
-                  right: -4,
-                  top: -2,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(color: accent, shape: BoxShape.circle),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            tool.label,
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: active ? accent : ink),
-          ),
-        ],
-      ),
-    ),
-  );
 }
 
 /// Line-art icons in the style of Cymera's body tools.

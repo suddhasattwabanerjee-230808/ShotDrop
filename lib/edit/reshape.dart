@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'body.dart';
+import 'shape.dart';
 
 /// A smooth, monotonic remap of 0..1 onto 0..1 that makes the band
 /// [start]..[end] longer ([amount] > 0) or shorter ([amount] < 0) and spreads
@@ -68,17 +69,20 @@ class BandWarp {
 }
 
 /// A textured triangle mesh that draws a [srcSize] image into [outSize],
-/// stretched down by [yWarp] and pushed across by the [local] warps (all in
-/// normalized coordinates of the image). Draw it with a Paint whose shader is
-/// an ImageShader of the image (texture coordinates are in image pixels).
+/// stretched down by [yWarp] and pushed across by the [slims] and the
+/// [local] warps (all in normalized coordinates of the image). Draw it with
+/// a Paint whose shader is an ImageShader of the image (texture coordinates
+/// are in image pixels).
 Vertices buildWarpMesh(
   Size srcSize,
   Size outSize,
   BandWarp yWarp, {
+  List<SlimArea> slims = const [],
   List<LocalWarp> local = const [],
   int cols = 64,
   int rows = 64,
 }) {
+  final aspect = srcSize.width / srcSize.height;
   final positions = Float32List((cols + 1) * (rows + 1) * 2);
   final tex = Float32List((cols + 1) * (rows + 1) * 2);
   var k = 0;
@@ -90,6 +94,9 @@ Vertices buildWarpMesh(
       var x = u;
       // The frame's edges stay put, so nothing pulls in from outside it.
       if (c > 0 && c < cols) {
+        for (final s in slims) {
+          x += s.dx(u, v, aspect);
+        }
         for (final w in local) {
           x += w.dx(u, v);
         }
@@ -121,9 +128,8 @@ Vertices buildWarpMesh(
   return Vertices.raw(VertexMode.triangles, positions, textureCoordinates: tex, indices: indices);
 }
 
-/// The Slim, Hip and Legs warps an edit asks for.
-List<LocalWarp> bodyWarps(double slim, double hips, double legs, BodyAnchors body) => [
-  if (slim > 0) LocalWarp(body.waist, slim * maxSlim),
+/// The Hip and Legs warps an edit asks for.
+List<LocalWarp> bodyWarps(double hips, double legs, BodyAnchors body) => [
   if (hips > 0) LocalWarp(body.hips, hips * maxHips),
   if (legs > 0)
     for (final leg in body.legs) LocalWarp(leg, legs * maxLegs),

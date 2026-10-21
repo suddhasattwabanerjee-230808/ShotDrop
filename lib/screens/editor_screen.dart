@@ -9,6 +9,7 @@ import '../card_channel.dart';
 import '../edit/crop.dart';
 import '../edit/filters.dart';
 import '../edit/render.dart';
+import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../pose_channel.dart';
@@ -69,6 +70,9 @@ class _EditorScreenState extends State<EditorScreen> {
   EditParams? _beforeTool;
   PoseStatus _pose = PoseStatus.detecting;
   String? _poseFor; // the crop the pose was found in
+  BodyMask? _mask; // the person's outline in that crop, if found
+  SlimArea? _slimDraft; // Slim's area while it's being picked
+  BodyTool? _toolBeforeSlim; // the tool open when Slim was tapped (null: none)
 
   // The cropped preview the Body and Adjust tools draw on; rebuilt when the crop changes.
   ui.Image? _cropped;
@@ -102,7 +106,9 @@ class _EditorScreenState extends State<EditorScreen> {
       _error = null;
       _tool = _Tool.crop;
       _bodyTool = null;
+      _slimDraft = null;
       _poseFor = null;
+      _mask = null;
       _pose = PoseStatus.detecting;
     });
     try {
@@ -286,19 +292,22 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   /// Looks for the person once per crop, when the Body tab is open. A found
-  /// body places Slim / Hip / Legs (and Stretch's lines, if Stretch is unused)
-  /// for the user; this isn't an undo step.
+  /// body places Slim's line, Hip / Legs (and Stretch's lines, if Stretch is
+  /// unused) for the user; this isn't an undo step.
   void _ensurePose() {
     final cropped = _cropped, key = _croppedFor;
     if (_tool != _Tool.body || cropped == null || key == null || key != _cropKey(_p) || _poseFor == key) return;
     _poseFor = key;
     _pose = PoseStatus.detecting;
+    _mask = null;
     PoseChannel.instance
         .detect(cropped)
         .then(
-          (body) {
+          (scan) {
             if (!mounted || _poseFor != key) return;
+            final body = scan.body;
             setState(() {
+              _mask = scan.mask;
               _pose = body == null ? PoseStatus.notFound : PoseStatus.found;
               if (body == null) return;
               final band = body.legBand;
@@ -306,6 +315,8 @@ class _EditorScreenState extends State<EditorScreen> {
               if (_h >= 0) _history[_h] = _p;
               final before = _beforeTool;
               if (before != null) _beforeTool = before.copyWith(body: body);
+              // Slim's line was guessed before the body was found: put it on the waist.
+              if (_slimDraft != null) _slimDraft = placeSlim(body, scan.mask);
             });
           },
           onError: (Object _) {
@@ -391,7 +402,16 @@ class _EditorScreenState extends State<EditorScreen> {
       view = cropped == null
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
           : _tool == _Tool.body
-          ? BodyStage(image: cropped, params: _p, tool: _bodyTool, onLive: _live, onCommit: _commit)
+          ? BodyStage(
+              image: cropped,
+              params: _p,
+              tool: _bodyTool,
+              onLive: _live,
+              onCommit: _commit,
+              slimDraft: _slimDraft,
+              onSlimDraft: (s) => setState(() => _slimDraft = s),
+              mask: _mask,
+            )
           : LayoutBuilder(
               builder: (context, box) {
                 final size = Size(cropped.width.toDouble(), cropped.height.toDouble());
@@ -492,9 +512,26 @@ class _EditorScreenState extends State<EditorScreen> {
                   params: _p,
                   tool: _bodyTool,
                   pose: _pose,
+                  selecting: _slimDraft != null,
+                  // Like Cymera's Body screen: tools switch freely while one is
+                  // open, and Cancel / Apply cover everything since the first.
                   onOpen: (t) => setState(() {
+                    if (_bodyTool == null) _beforeTool = _p;
+                    if (t == BodyTool.slim) {
+                      // Each tap on Slim picks a new area, on top of earlier ones.
+                      _toolBeforeSlim = _bodyTool;
+                      _slimDraft = placeSlim(_p.bodyOrDefault, _mask);
+                    }
                     _bodyTool = t;
-                    _beforeTool = _p;
+                  }),
+                  onConfirmSlim: () => setState(() {
+                    _p = _p.copyWith(slims: [..._p.slims, _slimDraft!]);
+                    _slimDraft = null;
+                  }),
+                  onCancelSlim: () => setState(() {
+                    _slimDraft = null;
+                    _bodyTool = _toolBeforeSlim;
+                    if (_bodyTool == null) _p = _beforeTool ?? _p;
                   }),
                   onLive: _live,
                   onCancel: () => setState(() {
@@ -503,7 +540,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   }),
                   onApply: () {
                     _bodyTool = null;
-                    _commit();
+                    // Slim areas left at 0 do nothing; don't keep them.
+                    _commit(_p.copyWith(slims: [for (final s in _p.slims) if (s.amount.abs() > 0.005) s]));
                   },
                 ),
                 _Tool.adjust => _AdjustTools(params: _p, thumb: _cropped, onLive: _live, onCommit: _commit),

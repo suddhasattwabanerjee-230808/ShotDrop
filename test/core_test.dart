@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:shotdrop/edit/crop.dart';
 import 'package:shotdrop/edit/filters.dart';
 import 'package:shotdrop/edit/render.dart';
 import 'package:shotdrop/edit/reshape.dart';
+import 'package:shotdrop/edit/shape.dart';
 import 'package:shotdrop/edit/story.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/publish.dart';
@@ -55,7 +57,7 @@ void main() {
       aspect: AspectPreset.portrait,
       height: 0.2,
       heightBand: (0.4, 0.95),
-      slim: 0.6,
+      slims: [SlimArea(0.45, 0.3, 0.7, 0.6), SlimArea(0.3, 0.35, 0.65, -0.2)],
       hips: 0.2,
       legs: 0.9,
       body: BodyAnchors(
@@ -70,6 +72,14 @@ void main() {
     );
     final back = EditParams.fromJson(p.toJson());
     expect(back.toJson(), p.toJson());
+  });
+
+  test("0.3.0's Slim loads as a Slim line across the waist", () {
+    final p = EditParams.fromJson({'slim': 0.5});
+    expect(p.slims, hasLength(1));
+    expect(p.slims.single.amount, 0.5);
+    expect(p.slims.single.y, BodyAnchors.defaults.waist.cy);
+    expect(EditParams.fromJson({}).slims, isEmpty);
   });
 
   group('filters', () {
@@ -179,9 +189,9 @@ void main() {
       expect(back.toJson(), b.toJson());
     });
 
-    test('slim pulls the waist edges in, leaves far-away pixels alone, and never folds over', () {
+    test('a local warp pulls edges in, leaves far-away pixels alone, and never folds over', () {
       const area = BodyArea(0.5, 0.4, 0.2, 0.12);
-      final slim = LocalWarp(area, maxSlim);
+      final slim = LocalWarp(area, maxLegs);
       expect(slim.dx(0.4, 0.4), greaterThan(0)); // left edge moves right (inwards)
       expect(slim.dx(0.6, 0.4), lessThan(0)); // right edge moves left
       expect(slim.dx(0.5, 0.4), 0); // the centre line stays
@@ -198,8 +208,67 @@ void main() {
     });
 
     test('sliders at zero add no warps', () {
-      expect(bodyWarps(0, 0, 0, BodyAnchors.defaults), isEmpty);
-      expect(bodyWarps(1, 1, 1, BodyAnchors.defaults), hasLength(4)); // waist, hips, two legs
+      expect(bodyWarps(0, 0, BodyAnchors.defaults), isEmpty);
+      expect(bodyWarps(1, 1, BodyAnchors.defaults), hasLength(3)); // hips, two legs
+    });
+  });
+
+  group('slim', () {
+    const area = SlimArea(0.5, 0.3, 0.7, 1);
+
+    test('each bracket pushes its side in, the middle and the far photo stay', () {
+      expect(area.dx(0.3, 0.5, 1), closeTo(maxSlimPush * 0.4, 1e-9)); // left bracket moves right
+      expect(area.dx(0.7, 0.5, 1), closeTo(-maxSlimPush * 0.4, 1e-9)); // right bracket moves left
+      expect(area.dx(0.5, 0.5, 1).abs(), lessThan(1e-9)); // middle
+      expect(area.dx(0.02, 0.5, 1), 0); // beyond the circles (radius 0.26)
+      expect(area.dx(0.3, 0.78, 1), 0); // below them
+      expect(area.copyWith(amount: -1).dx(0.3, 0.5, 1), lessThan(0)); // wider pushes out
+      expect(area.copyWith(amount: 0).dx(0.3, 0.5, 1), 0);
+    });
+
+    test('the circles are round on a tall photo', () {
+      // 4:5: a step of 0.1 of the height down is 0.125 of the width.
+      expect(area.dx(0.3, 0.6, 0.8), closeTo(area.dx(0.425, 0.5, 0.8), 1e-9));
+    });
+
+    test('no row folds over itself, slimmer or wider', () {
+      for (final a in [1.0, -1.0]) {
+        final s = area.copyWith(amount: a);
+        for (var v = 0.3; v <= 0.7; v += 0.05) {
+          var last = -1.0;
+          for (var i = 0; i <= 400; i++) {
+            final u = i / 400, moved = u + s.dx(u, v, 0.8);
+            expect(moved, greaterThan(last));
+            last = moved;
+          }
+        }
+      }
+    });
+
+    test('the line starts on the waist with brackets on the outline', () {
+      final mask = _personMask(200, 200);
+      final s = placeSlim(BodyAnchors.defaults, mask);
+      expect(s.y, BodyAnchors.defaults.waist.cy);
+      expect(s.left, closeTo(0.4, 0.01));
+      expect(s.right, closeTo(0.6, 0.01));
+      // No outline: around the pose's waist.
+      final guess = placeSlim(BodyAnchors.defaults, null);
+      expect(guess.left, lessThan(0.5));
+      expect(guess.right, greaterThan(0.5));
+    });
+
+    test('edges are found on the body run nearest the line', () {
+      final mask = _personMask(200, 200);
+      expect(mask.edgesAt(0.1, 0.5), (0.425, 0.575)); // the head
+      expect(mask.edgesAt(0.02, 0.5), isNull); // above it
+    });
+
+    test('the mask shrinks to at most 256 cells on its long edge', () {
+      final big = BodyMask.fit(720, 900, Uint8List(720 * 900)..fillRange(0, 720 * 450, 255));
+      expect(big.h, 256);
+      expect(big.w, 205);
+      expect(big.at(100, 10), isTrue);
+      expect(big.at(100, 200), isFalse);
     });
   });
 
@@ -268,7 +337,7 @@ void main() {
 
     test('reshape and filter keep the frame size and paint the whole frame', () async {
       final src = await solid(120, 160);
-      const p = EditParams(height: 0.3, slim: 1, hips: 1, legs: 1, filter: 'vivid');
+      const p = EditParams(height: 0.3, slims: [SlimArea(0.5, 0.3, 0.7, 1)], hips: 1, legs: 1, filter: 'vivid');
       final out = await renderFinal(src, p);
       expect([out.width, out.height], [120, 160]);
       final bytes = (await out.toByteData(format: ui.ImageByteFormat.rawRgba))!;
@@ -384,3 +453,16 @@ UploadItem _item(String id) => UploadItem(
   exportPath: '/e/$id.jpg',
   params: const EditParams(),
 );
+
+/// A [w] x [h] person outline: a head (30 wide) near the top, then a body 40
+/// wide down to the bottom, centred.
+BodyMask _personMask(int w, int h) {
+  final data = Uint8List(w * h);
+  for (var y = 0; y < h; y++) {
+    final half = y < h * 0.05 ? 0 : (y < h * 0.22 ? w * 0.075 : (y < h * 0.25 ? 0 : w * 0.1));
+    for (var x = 0; x < w; x++) {
+      if ((x + 0.5 - w / 2).abs() < half) data[y * w + x] = 255;
+    }
+  }
+  return BodyMask(w, h, data);
+}

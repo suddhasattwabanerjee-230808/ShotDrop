@@ -125,4 +125,4 @@ class LocalWarp {
 }
 
 // Strength at 100 on each slider.
-const maxSlim = -0.34, maxHips = 0.3, maxLegs = -0.36, maxStretch = 0.4;
+const maxHips = 0.3, maxLegs = -0.36, maxStretch = 0.4;

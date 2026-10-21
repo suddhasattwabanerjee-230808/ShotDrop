@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0] - 2026-10-22 (build 4)
+
+Slim, the way Cymera does it.
+
+- Tap **Slim** and pick the area: a line with a bracket at each end ("Select the waist area."). ShotDrop finds the body by itself (on the phone, offline) and starts the line on the waist with the brackets on the body's edges. Drag the line up or down and the brackets follow the body; drag a bracket to set it yourself. Tap ✓.
+- Then slide: each bracket pushes its side of the body in (or out, for wider), fading out in a circle so the face and background further away don't move. Tuned against a screen recording of Cymera to give the same result.
+- Tap Slim again to pick another area on top.
+- **Stretch** now goes both ways: taller or shorter.
+- The Body screen is laid out like Cymera's: the slider (with its value, like +0.55) over the row of tools, and Cancel / Body / Apply for everything changed since you opened it. Tools switch without closing.
+- Photos slimmed in 0.3.0 keep their Slim, as a line across the waist.
+
 ## [0.3.0] - 2026-10-21 (build 3)
 
 Body tools, Cymera-style.
