@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../stores.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'app_screens.dart';
 import 'grid_screen.dart';
 import 'upload_screen.dart';
 
@@ -16,16 +17,39 @@ class CardScreen extends StatefulWidget {
 }
 
 class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
+  late final _updater = AppScope.of(context).updater;
+  bool _toldUpdate = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _updater.addListener(_onUpdate);
+      _onUpdate();
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _updater.removeListener(_onUpdate);
     super.dispose();
+  }
+
+  /// A new version: say so once, with the way to get it.
+  void _onUpdate() {
+    final latest = _updater.latest;
+    if (_toldUpdate || latest == null || !mounted) return;
+    _toldUpdate = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 6),
+        persist: false,
+        content: Text('ShotDrop ${latest.version} is out'),
+        action: SnackBarAction(label: 'Update', onPressed: () => showUpdateSheet(context)),
+      ),
+    );
   }
 
   @override
@@ -42,7 +66,10 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
         final card = scope.card;
         if (card.state == CardState.ready) return const GridScreen();
         return Scaffold(
-          appBar: AppBar(title: const Text('ShotDrop'), actions: const [UploadFolderButton(), SizedBox(width: 8)]),
+          appBar: AppBar(
+            title: const Text('ShotDrop'),
+            actions: const [UploadFolderButton(), AppMenuButton(), SizedBox(width: 4)],
+          ),
           body: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: KeyedSubtree(key: ValueKey(card.state), child: _body(context, card)),
@@ -57,15 +84,32 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
       case CardState.noFolder:
         return StatePanel(
           icon: Icons.sd_card_outlined,
+          iconWidget: const _PulsingIcon(icon: Icons.sd_card_outlined),
           title: 'Plug in your camera card',
           body:
               'Put the D5600\'s SD card in a card reader and connect it to the phone with the OTG adapter. '
-              'Then pick the card\'s DCIM folder, just once. ShotDrop remembers it after that.',
+              'ShotDrop notices it by itself.',
+          actions: [
+            TextButton.icon(
+              onPressed: () => _pick(context),
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('Choose a folder instead'),
+            ),
+          ],
+        );
+      case CardState.newCard:
+        return StatePanel(
+          icon: Icons.sd_card_rounded,
+          iconWidget: const _PulsingIcon(icon: Icons.sd_card_rounded),
+          title: 'Card found',
+          body:
+              'Android asks once per card before an app can read it. Tap below, then "Use this folder" and "Allow": '
+              'the card\'s DCIM folder is already open. Next time this card opens by itself.',
           actions: [
             FilledButton.icon(
               onPressed: () => _pick(context),
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('Choose the card\'s DCIM folder'),
+              icon: const Icon(Icons.photo_library_rounded),
+              label: Text('Open ${card.cardName ?? 'the card'}'),
             ),
           ],
         );
@@ -106,13 +150,17 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _pick(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await AppScope.of(context).card.pickFolder();
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t open that folder: $e')));
-    }
+  Future<void> _pick(BuildContext context) => pickCardFolder(context);
+}
+
+/// Opens the folder picker (at the card's DCIM folder when a card is in) and
+/// shows the photos from whatever is picked.
+Future<void> pickCardFolder(BuildContext context) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await AppScope.of(context).card.pickFolder();
+  } catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text('Couldn\'t open that folder: $e')));
   }
 }
 

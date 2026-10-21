@@ -18,8 +18,16 @@ class CardChannel {
   /// Fires whenever a storage volume is mounted or removed.
   Stream<void> get volumeChanges => _events.receiveBroadcastStream().map((_) {});
 
-  /// Opens the system folder picker. Returns the chosen folder (persisted), or null.
+  /// Opens the system folder picker (on the plugged-in card's DCIM folder,
+  /// if there is one). Returns the chosen folder (persisted), or null.
   Future<String?> pickFolder() => _m.invokeMethod<String>('pickFolder');
+
+  /// A folder picked before (permission kept) that's readable right now:
+  /// the card it's on is plugged in. DCIM folders on cards first.
+  Future<String?> findCard() => _m.invokeMethod<String>('findCard');
+
+  /// The name of a plugged-in removable card (e.g. "SanDisk USB drive"), or null.
+  Future<String?> cardVolume() => _m.invokeMethod<String>('cardVolume');
 
   Future<CardAccess> access(String treeUri) async {
     final r = await _m.invokeMethod<String>('access', {'treeUri': treeUri});

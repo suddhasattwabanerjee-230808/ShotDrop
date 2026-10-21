@@ -65,9 +65,8 @@ class _EditorScreenState extends State<EditorScreen> {
   _Tool _tool = _Tool.crop;
   bool _comparing = false;
 
-  // Body tab: the tool that's open (with its Cancel / Apply), and the person found in the photo.
+  // Body tab: the tool that's open, and the person found in the photo.
   BodyTool? _bodyTool;
-  EditParams? _beforeTool;
   PoseStatus _pose = PoseStatus.detecting;
   String? _poseFor; // the crop the pose was found in
   BodyMask? _mask; // the person's outline in that crop, if found
@@ -172,7 +171,13 @@ class _EditorScreenState extends State<EditorScreen> {
     final target = _target;
     final uploads = AppScope.of(context).uploads;
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _status = 'Saving to the Upload folder…');
+    setState(() {
+      _status = 'Saving to the Upload folder…';
+      _bodyTool = null;
+      _slimDraft = null;
+      // Slim areas left at 0 do nothing; don't keep them.
+      _p = _p.copyWith(slims: [for (final s in _p.slims) if (s.amount.abs() > 0.005) s]);
+    });
     try {
       final full = await _decode(source);
       final out = await renderFinal(full, _p);
@@ -250,11 +255,11 @@ class _EditorScreenState extends State<EditorScreen> {
   // --- Edit history -------------------------------------------------------------
 
   /// Shows [p] without adding an undo step (while a finger is still moving).
-  void _live(EditParams p) => setState(() => _p = p);
+  void _live(EditParams p) => setState(() => _p = followCrop(_p, p));
 
   /// Shows [p] and makes it an undo step.
   void _commit([EditParams? p]) {
-    final next = p ?? _p;
+    final next = followCrop(_p, p ?? _p);
     setState(() {
       _p = next;
       if (_h >= 0 && identical(_history[_h], next)) return;
@@ -270,6 +275,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _redo() {
     if (_h < _history.length - 1) setState(() => _p = _history[++_h]);
+  }
+
+  /// Opens Slim's "Select the waist area" step, the line placed on the body.
+  /// [back] is the tool to return to if it's cancelled.
+  void _startSlim(BodyTool? back) {
+    _toolBeforeSlim = back;
+    _bodyTool = BodyTool.slim;
+    _slimDraft = placeSlim(_p.bodyOrDefault, _mask);
   }
 
   // --- Cropped preview for the Body and Adjust tools ------------------------------
@@ -313,8 +326,6 @@ class _EditorScreenState extends State<EditorScreen> {
               final band = body.legBand;
               _p = _p.copyWith(body: body, heightBand: _p.height == 0 && band != null ? band : null);
               if (_h >= 0) _history[_h] = _p;
-              final before = _beforeTool;
-              if (before != null) _beforeTool = before.copyWith(body: body);
               // Slim's line was guessed before the body was found: put it on the waist.
               if (_slimDraft != null) _slimDraft = placeSlim(body, scan.mask);
             });
@@ -363,7 +374,7 @@ class _EditorScreenState extends State<EditorScreen> {
               padding: const EdgeInsets.only(right: 12, left: 4),
               child: FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
-                onPressed: _status == null && _sourcePath != null && _bodyTool == null ? _done : null,
+                onPressed: _status == null && _sourcePath != null ? _done : null,
                 child: const Text('Done'),
               ),
             ),
@@ -513,44 +524,34 @@ class _EditorScreenState extends State<EditorScreen> {
                   tool: _bodyTool,
                   pose: _pose,
                   selecting: _slimDraft != null,
-                  // Like Cymera's Body screen: tools switch freely while one is
-                  // open, and Cancel / Apply cover everything since the first.
                   onOpen: (t) => setState(() {
-                    if (_bodyTool == null) _beforeTool = _p;
-                    if (t == BodyTool.slim) {
-                      // Each tap on Slim picks a new area, on top of earlier ones.
-                      _toolBeforeSlim = _bodyTool;
-                      _slimDraft = placeSlim(_p.bodyOrDefault, _mask);
+                    if (t == _bodyTool && _slimDraft == null) {
+                      _bodyTool = null; // tapping the open tool closes it
+                      return;
                     }
+                    _slimDraft = null;
                     _bodyTool = t;
+                    // Slim with no area yet starts by picking one; otherwise it opens on the newest area.
+                    if (t == BodyTool.slim && _p.slims.isEmpty) _startSlim(null);
                   }),
+                  onNewSlim: () => setState(() => _startSlim(BodyTool.slim)),
                   onConfirmSlim: () => setState(() {
-                    _p = _p.copyWith(slims: [..._p.slims, _slimDraft!]);
+                    _commit(_p.copyWith(slims: [..._p.slims, _slimDraft!]));
                     _slimDraft = null;
                   }),
                   onCancelSlim: () => setState(() {
                     _slimDraft = null;
                     _bodyTool = _toolBeforeSlim;
-                    if (_bodyTool == null) _p = _beforeTool ?? _p;
                   }),
                   onLive: _live,
-                  onCancel: () => setState(() {
-                    _p = _beforeTool ?? _p;
-                    _bodyTool = null;
-                  }),
-                  onApply: () {
-                    _bodyTool = null;
-                    // Slim areas left at 0 do nothing; don't keep them.
-                    _commit(_p.copyWith(slims: [for (final s in _p.slims) if (s.amount.abs() > 0.005) s]));
-                  },
+                  onCommit: _commit,
                 ),
                 _Tool.adjust => _AdjustTools(params: _p, thumb: _cropped, onLive: _live, onCommit: _commit),
               },
             ),
           ),
-          if (_bodyTool == null) const Divider(height: 1),
-          if (_bodyTool == null)
-            Row(
+          const Divider(height: 1),
+          Row(
               children: [
                 for (final (tool, icon, label) in const [
                   (_Tool.crop, Icons.crop_rotate_rounded, 'Crop'),
@@ -559,7 +560,14 @@ class _EditorScreenState extends State<EditorScreen> {
                 ])
                   Expanded(
                     child: InkWell(
-                      onTap: () => setState(() => _tool = tool),
+                      onTap: () => setState(() {
+                        // Every tab is always there; leaving Body keeps what was done (picking a Slim area is dropped).
+                        _tool = tool;
+                        if (tool != _Tool.body) {
+                          _bodyTool = null;
+                          _slimDraft = null;
+                        }
+                      }),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         child: Column(

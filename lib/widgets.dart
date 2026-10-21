@@ -5,21 +5,33 @@ import 'package:flutter/material.dart';
 import 'card_channel.dart';
 import 'models.dart';
 import 'stores.dart';
+import 'update.dart';
 import 'theme.dart';
 
-/// The app's two stores, reachable from any screen.
+/// The app's stores (and its updater), reachable from any screen.
 class AppScope extends InheritedWidget {
-  const AppScope({super.key, required this.card, required this.uploads, required this.social, required super.child});
+  const AppScope({
+    super.key,
+    required this.card,
+    required this.uploads,
+    required this.social,
+    required this.updater,
+    required super.child,
+  });
 
   final CardStore card;
   final UploadStore uploads;
   final SocialSettings social;
+  final Updater updater;
 
   static AppScope of(BuildContext context) => context.getInheritedWidgetOfExactType<AppScope>()!;
 
   @override
   bool updateShouldNotify(AppScope oldWidget) =>
-      card != oldWidget.card || uploads != oldWidget.uploads || social != oldWidget.social;
+      card != oldWidget.card ||
+      uploads != oldWidget.uploads ||
+      social != oldWidget.social ||
+      updater != oldWidget.updater;
 }
 
 /// Card thumbnails asked for once per session; later requests reuse the answer.

@@ -300,3 +300,38 @@ class UploadItem {
     height: (j['height'] as num?)?.toInt(),
   );
 }
+
+/// [next] with the body tools (Slim's areas, Stretch's band, the body found)
+/// moved so they stay on the same part of the photo when only the crop
+/// changed since [prev]. They're kept relative to the crop, so without this a
+/// re-crop would slide them onto something else.
+EditParams followCrop(EditParams prev, EditParams next) {
+  final a = prev.crop, b = next.crop;
+  if (a == b ||
+      prev.quarterTurns != next.quarterTurns ||
+      prev.flipH != next.flipH ||
+      prev.straighten != next.straighten ||
+      b.width <= 0 ||
+      b.height <= 0) {
+    return next;
+  }
+  double x(double v) => (a.left + v * a.width - b.left) / b.width;
+  double y(double v) => (a.top + v * a.height - b.top) / b.height;
+  final sx = a.width / b.width, sy = a.height / b.height;
+  BodyArea area(BodyArea r) => BodyArea(x(r.cx), y(r.cy), r.rx * sx, r.ry * sy);
+  final body = next.body;
+  final band = body?.legBand;
+  return next.copyWith(
+    slims: [for (final s in next.slims) s.copyWith(y: y(s.y), left: x(s.left), right: x(s.right))],
+    heightBand: (y(next.heightBand.$1).clamp(0.0, 1.0), y(next.heightBand.$2).clamp(0.0, 1.0)),
+    body: body == null
+        ? null
+        : BodyAnchors(
+            waist: area(body.waist),
+            hips: area(body.hips),
+            legs: [for (final l in body.legs) area(l)],
+            legBand: band == null ? null : (y(band.$1), y(band.$2)),
+            found: body.found,
+          ),
+  );
+}

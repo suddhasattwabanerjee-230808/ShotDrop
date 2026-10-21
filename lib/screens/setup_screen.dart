@@ -29,6 +29,8 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _checkApps();
+    // Shown once: however it's left (Continue, Skip, or back), the app opens on the card next time.
+    if (widget.firstRun) _social.save(setupSeen: true);
   }
 
   @override

@@ -64,3 +64,19 @@ jobs:
           name: 'ShotDrop ${{ github.ref_name }}'
           body_path: release_notes.md
           files: ShotDrop-${{ github.ref_name }}.apk
+
+      # In-app updates read the public ShotDrop-releases repo (this one is
+      # private), so the APK goes there too. RELEASES_TOKEN is a token that can
+      # write to that repo only; without it this step just warns.
+      - name: Publish the APK for in-app updates
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::RELEASES_TOKEN isn't set, so the app's Update button won't see ${GITHUB_REF_NAME}."
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" "ShotDrop-${GITHUB_REF_NAME}.apk" \
+            --repo suddhasattwabanerjee-230808/ShotDrop-releases \
+            --title "ShotDrop ${GITHUB_REF_NAME}" \
+            --notes-file release_notes.md

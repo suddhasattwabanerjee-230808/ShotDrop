@@ -70,6 +70,7 @@ class _ViewerScreenState extends State<ViewerScreen> {
       SnackBar(
         content: const Text('Added to the Upload folder'),
         duration: const Duration(seconds: 3),
+        persist: false, // with a button it would otherwise stay until tapped
         action: hasNext
             ? SnackBarAction(
                 label: 'Next photo',

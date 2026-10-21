@@ -2,14 +2,30 @@
 
 ## [0.4.0] - 2026-10-22 (build 4)
 
-Slim, the way Cymera does it.
+Slim like Cymera's, and a smoother day-to-day.
 
-- Tap **Slim** and pick the area: a line with a bracket at each end ("Select the waist area."). ShotDrop finds the body by itself (on the phone, offline) and starts the line on the waist with the brackets on the body's edges. Drag the line up or down and the brackets follow the body; drag a bracket to set it yourself. Tap ✓.
-- Then slide: each bracket pushes its side of the body in (or out, for wider), fading out in a circle so the face and background further away don't move. Tuned against a screen recording of Cymera to give the same result.
-- Tap Slim again to pick another area on top.
-- **Stretch** now goes both ways: taller or shorter.
-- The Body screen is laid out like Cymera's: the slider (with its value, like +0.55) over the row of tools, and Cancel / Body / Apply for everything changed since you opened it. Tools switch without closing.
+**Card**
+- Opens on the card's photos. The Instagram setup shows on the very first launch only, however you leave it.
+- Plug in the card and its photos come up by themselves. A card used before opens straight away; a new card shows "Card found", and one tap opens the picker right on its DCIM folder (Android asks once per card).
+- "Choose another folder" (⋮ menu) now really switches the grid to that folder. Rescanning updates it too.
+
+**Editing**
+- Crop, Body and Adjust are always there together: go from Slim straight to a filter or the crop and back, nothing to Apply first. Changes show as you make them; undo covers them all.
+- **Slim**: tap Slim and pick the area, a line with a bracket at each end ("Select the waist area."). ShotDrop finds the body by itself (on the phone, offline) and starts the line on the waist with the brackets on the body's edges. Tap ✓, then slide: each bracket pushes its side of the body in (or out, for wider), as Cymera does. Earlier areas can be tapped and changed again, moved, or removed; "New area" adds another.
+- **Stretch** goes both ways: taller or shorter.
+- Re-cropping keeps Slim's areas and Stretch's lines on the same part of the body.
 - Photos slimmed in 0.3.0 keep their Slim, as a line across the waist.
+
+**Upload folder**
+- Tick the photos to publish; unticked ones stay for later. Only the published ones leave the folder.
+- Each photo has an Edit button (tapping the photo works too) to change its edit again from the original.
+
+**Instagram**
+- Caption auto-paste: switch on "ShotDrop caption paste" once (⋮ menu > Caption auto-paste walks you through it) and ShotDrop types the caption into Instagram's caption box itself. Off, it's copied for pasting as before.
+- The "Added to the Upload folder" note now goes away after 3 seconds.
+
+**Updates**
+- ⋮ menu > Update app: checks for a new version, shows what's new, downloads it and opens Android's installer. A dot on the menu says when one is out.
 
 ## [0.3.0] - 2026-10-21 (build 3)
 

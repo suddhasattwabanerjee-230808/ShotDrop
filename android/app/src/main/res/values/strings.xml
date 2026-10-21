@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="caption_service_label">ShotDrop caption paste</string>
+    <string name="caption_service_description">When ShotDrop opens a new Instagram post, this types your Upload folder caption into Instagram\'s caption box, once. It only looks at Instagram, and only right after ShotDrop opens it.</string>
+</resources>

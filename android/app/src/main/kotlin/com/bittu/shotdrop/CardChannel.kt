@@ -15,6 +15,8 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.storage.StorageManager
+import android.os.storage.StorageVolume
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import io.flutter.plugin.common.BinaryMessenger
@@ -43,6 +45,8 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
 
     private var pendingPick: MethodChannel.Result? = null
     private var volumeReceiver: BroadcastReceiver? = null
+    private var volumeCallback: Any? = null // StorageManager.StorageVolumeCallback, API 30+
+    private val storage by lazy { activity.getSystemService(StorageManager::class.java) }
 
     init {
         methods.setMethodCallHandler(this)
@@ -66,6 +70,16 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
                     activity.registerReceiver(receiver, filter)
                 }
                 volumeReceiver = receiver
+                // Newer phones also report volumes coming and going here, sometimes when the broadcast doesn't.
+                if (Build.VERSION.SDK_INT >= 30) {
+                    val callback = object : StorageManager.StorageVolumeCallback() {
+                        override fun onStateChanged(volume: StorageVolume) {
+                            main.post { sink.success(volume.state) }
+                        }
+                    }
+                    storage.registerStorageVolumeCallback(activity.mainExecutor, callback)
+                    volumeCallback = callback
+                }
             }
 
             override fun onCancel(arguments: Any?) = unregisterVolumes()
@@ -82,12 +96,20 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     private fun unregisterVolumes() {
         volumeReceiver?.let { runCatching { activity.unregisterReceiver(it) } }
         volumeReceiver = null
+        if (Build.VERSION.SDK_INT >= 30) {
+            (volumeCallback as? StorageManager.StorageVolumeCallback)?.let {
+                runCatching { storage.unregisterStorageVolumeCallback(it) }
+            }
+        }
+        volumeCallback = null
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "pickFolder" -> pickFolder(result)
             "access" -> background(result, lister) { access(Uri.parse(call.argument<String>("treeUri"))) }
+            "findCard" -> background(result, lister) { findCard() }
+            "cardVolume" -> background(result, lister) { removableVolume()?.getDescription(activity) }
             "list" -> background(result, lister) { list(Uri.parse(call.argument<String>("treeUri"))) }
             "thumbnail" -> background(result) {
                 thumbnail(
@@ -144,10 +166,41 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     private fun pickFolder(result: MethodChannel.Result) {
         pendingPick?.success(null)
         pendingPick = result
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+        // With a card plugged in, open the picker right on its DCIM folder: one tap on "Use this folder".
+        val volume = removableVolume()
+        val intent = (
+            if (volume != null && volume.uuid != null) {
+                volume.createOpenDocumentTreeIntent().apply {
+                    putExtra(
+                        DocumentsContract.EXTRA_INITIAL_URI,
+                        DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE, "${volume.uuid}:DCIM"),
+                    )
+                }
+            } else {
+                Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            }
+        ).apply {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
         activity.startActivityForResult(intent, PICK_FOLDER)
+    }
+
+    /** A plugged-in card (SD reader, USB drive), if any. */
+    private fun removableVolume(): StorageVolume? = storage.storageVolumes.firstOrNull {
+        it.isRemovable && !it.isPrimary && it.state == Environment.MEDIA_MOUNTED
+    }
+
+    /**
+     * A folder picked before (its permission is kept) that can be read now,
+     * because its card is plugged in: so each card only has to be picked
+     * once, ever. Folders on cards, and DCIM folders, come first.
+     */
+    private fun findCard(): String? {
+        val trees = activity.contentResolver.persistedUriPermissions
+            .filter { it.isReadPermission }
+            .mapNotNull { p -> runCatching { p.uri to DocumentsContract.getTreeDocumentId(p.uri) }.getOrNull() }
+            .sortedBy { (_, id) -> (if (id.startsWith("primary:")) 2 else 0) + (if (id.contains("DCIM", true)) 0 else 1) }
+        return trees.firstOrNull { (uri, _) -> access(uri) == "ok" }?.first?.toString()
     }
 
     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
@@ -310,6 +363,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
 
     companion object {
         private const val PICK_FOLDER = 4201
+        private const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
         private val PHOTO_EXTENSIONS = setOf("JPG", "JPEG", "NEF", "NRW")
     }
 }

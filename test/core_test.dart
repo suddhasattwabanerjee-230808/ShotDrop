@@ -14,6 +14,7 @@ import 'package:shotdrop/edit/story.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/publish.dart';
 import 'package:shotdrop/stores.dart';
+import 'package:shotdrop/update.dart';
 
 CardFile f(String path, {int modified = 1000, int size = 10}) => CardFile(
   uri: 'content://x/$path',
@@ -270,6 +271,44 @@ void main() {
       expect(big.at(100, 10), isTrue);
       expect(big.at(100, 200), isFalse);
     });
+  });
+
+  group('updates', () {
+    test('versions compare by number, not as text', () {
+      expect(compareVersions('v0.10.0', '0.9.3'), 1);
+      expect(compareVersions('0.4.0', 'v0.4.0'), 0);
+      expect(compareVersions('0.4.0+4', '0.4.1'), -1);
+    });
+
+    test('a newer release with an APK is offered; the same or older one is not', () {
+      const json = '''{"tag_name": "v0.5.0", "body": "Notes", "assets": [
+        {"name": "notes.txt", "browser_download_url": "https://x/notes.txt", "size": 1},
+        {"name": "ShotDrop-v0.5.0.apk", "browser_download_url": "https://x/a.apk", "size": 55000000}]}''';
+      final r = Updater.parseRelease(json, '0.4.0')!;
+      expect(r.version, '0.5.0');
+      expect(r.apkUrl, 'https://x/a.apk');
+      expect(r.apkSize, 55000000);
+      expect(Updater.parseRelease(json, '0.5.0'), isNull);
+      expect(Updater.parseRelease('{"tag_name": "v0.6.0", "assets": []}', '0.5.0'), isNull);
+    });
+  });
+
+  test('re-cropping keeps Slim, Stretch and the body on the same part of the photo', () {
+    const prev = EditParams(
+      crop: Rect.fromLTWH(0, 0, 1, 1),
+      slims: [SlimArea(0.5, 0.4, 0.6, 1)],
+      heightBand: (0.5, 0.9),
+      body: BodyAnchors.defaults,
+    );
+    final next = followCrop(prev, prev.copyWith(crop: const Rect.fromLTWH(0.25, 0.25, 0.5, 0.5)));
+    final s = next.slims.single;
+    expect([s.y, s.left, s.right], [0.5, closeTo(0.3, 1e-9), closeTo(0.7, 1e-9)]);
+    expect(next.heightBand.$1, closeTo(0.5, 1e-9));
+    expect(next.heightBand.$2, 1.0); // 1.3 is below the new crop: clamped
+    expect(next.body!.waist.rx, closeTo(BodyAnchors.defaults.waist.rx * 2, 1e-9));
+    // Turning the photo isn't a re-crop: left as it is.
+    final turned = prev.copyWith(quarterTurns: 1, crop: const Rect.fromLTWH(0.25, 0.25, 0.5, 0.5));
+    expect(followCrop(prev, turned).slims.single.left, 0.4);
   });
 
   group('crop', () {

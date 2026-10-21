@@ -16,6 +16,7 @@ import 'package:shotdrop/screens/editor_screen.dart';
 import 'package:shotdrop/screens/upload_screen.dart';
 import 'package:shotdrop/screens/viewer_screen.dart';
 import 'package:shotdrop/stores.dart';
+import 'package:shotdrop/update.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
@@ -242,7 +243,7 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('preview-root'),
-        child: ShotDropApp(card: card, uploads: uploads, social: social),
+        child: ShotDropApp(card: card, uploads: uploads, social: social, updater: Updater()),
       ),
     );
     await shot(tester, '0_setup');
@@ -277,20 +278,20 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.drag(find.byType(Slider), const Offset(160, 0)); // to about +0.6
     await shot(tester, '5b_slim');
-    await tester.tap(find.text('Apply'));
-    await tester.pump(const Duration(milliseconds: 300));
     for (final (tool, name) in [('Hip', '5c_hip'), ('Stretch', '5d_stretch')]) {
       await tester.tap(find.text(tool));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.drag(find.byType(Slider), const Offset(400, 0)); // to 100
       await shot(tester, name);
-      await tester.tap(find.text('Apply'));
-      await tester.pump(const Duration(milliseconds: 300));
     }
-    await shot(tester, '5e_body_applied');
-
+    // Straight from a body tool to Adjust: the filters work on top of the body changes.
     await tester.tap(find.text('Adjust'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Vivid').first);
     await shot(tester, '6_editor_adjust');
+    await tester.tap(find.text('Body'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await shot(tester, '5e_body_applied');
 
     await tester.tap(find.text('Done'));
     // The export is real work: wait for the editor to close by itself.

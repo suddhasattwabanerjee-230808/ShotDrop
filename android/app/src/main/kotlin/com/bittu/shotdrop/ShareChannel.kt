@@ -34,13 +34,16 @@ class ShareChannel(private val activity: Activity, messenger: BinaryMessenger) :
         try {
             when (call.method) {
                 "apps" -> result.success(mapOf("instagram" to installed(INSTAGRAM), "facebook" to installed(FACEBOOK)))
-                "share" -> result.success(
-                    share(
-                        call.argument<String>("app")!!,
-                        call.argument<String>("kind")!!,
-                        call.argument<List<String>>("paths")!!,
-                    ),
-                )
+                "share" -> {
+                    val app = call.argument<String>("app")!!
+                    val kind = call.argument<String>("kind")!!
+                    // Instagram drops captions sent with a share; CaptionService types it in instead.
+                    val caption = call.argument<String>("caption")
+                    if (app == "instagram" && kind == "feed" && !caption.isNullOrBlank()) {
+                        CaptionService.setPending(activity, caption)
+                    }
+                    result.success(share(app, kind, call.argument<List<String>>("paths")!!))
+                }
                 "openUrl" -> result.success(openUrl(call.argument<String>("url")!!, call.argument<String>("app")))
                 "moveInGallery" -> {
                     val values = ContentValues().apply {

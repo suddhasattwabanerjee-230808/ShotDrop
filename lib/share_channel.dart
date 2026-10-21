@@ -19,8 +19,15 @@ class ShareChannel {
     return (instagram: r['instagram'] ?? false, facebook: r['facebook'] ?? false);
   }
 
-  Future<ShareOutcome> share(SocialApp app, ShareKind kind, List<String> paths) async {
-    final r = await _m.invokeMethod<String>('share', {'app': app.name, 'kind': kind.name, 'paths': paths});
+  /// Opens [app]'s composer of [kind] with [paths]. A [caption] for an
+  /// Instagram post is typed in by CaptionService, when it's switched on.
+  Future<ShareOutcome> share(SocialApp app, ShareKind kind, List<String> paths, {String? caption}) async {
+    final r = await _m.invokeMethod<String>('share', {
+      'app': app.name,
+      'kind': kind.name,
+      'paths': paths,
+      'caption': ?caption,
+    });
     return ShareOutcome.values.asNameMap()[r] ?? ShareOutcome.notInstalled;
   }
 

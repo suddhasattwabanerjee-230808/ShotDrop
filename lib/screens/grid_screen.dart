@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'app_screens.dart';
 import 'card_screen.dart';
 import 'editor_screen.dart';
 import 'viewer_screen.dart';
@@ -55,15 +56,24 @@ class _GridScreenState extends State<GridScreen> {
     setState(_selected.clear);
     if (saved > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(saved == 1 ? 'Added to the Upload folder' : '$saved photos added to the Upload folder')),
+        SnackBar(
+          duration: const Duration(seconds: 3),
+          content: Text(saved == 1 ? 'Added to the Upload folder' : '$saved photos added to the Upload folder'),
+        ),
       );
     }
   }
 
+  // The card's list changes under this screen (rescan, another folder, another
+  // card), so it listens itself: the home screen hands it over as a const widget.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      ListenableBuilder(listenable: AppScope.of(context).card, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final scope = AppScope.of(context);
     final shots = scope.card.shots;
+    _selected.retainAll({for (final s in shots) s.id});
     final days = <List<CardShot>>[];
     for (final s in shots) {
       final t = s.taken;
@@ -97,16 +107,7 @@ class _GridScreenState extends State<GridScreen> {
                 ),
                 actions: [
                   const UploadFolderButton(),
-                  PopupMenuButton<String>(
-                    onSelected: (v) {
-                      if (v == 'rescan') scope.card.refresh();
-                      if (v == 'folder') scope.card.pickFolder();
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'rescan', child: Text('Rescan the card')),
-                      PopupMenuItem(value: 'folder', child: Text('Choose another folder')),
-                    ],
-                  ),
+                  const AppMenuButton(cardReady: true),
                 ],
               ),
         body: shots.isEmpty

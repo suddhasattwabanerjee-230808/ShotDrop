@@ -12,7 +12,8 @@ import 'publish_screen.dart';
 import 'setup_screen.dart';
 
 /// The Upload folder: edited photos in posting order (drag to reorder, swipe
-/// to remove, tap to edit again), the caption, and the way out to Instagram.
+/// to remove, tap or Edit to edit again), the caption, and the way out to
+/// Instagram. Only the ticked photos are published; the rest stay for later.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
 
@@ -24,6 +25,12 @@ class _UploadScreenState extends State<UploadScreen> {
   late final _uploads = AppScope.of(context).uploads;
   late final _caption = TextEditingController(text: _uploads.caption);
   Timer? _saveCaption;
+  final _skipped = <String>{}; // shotIds unticked: they stay here for later
+
+  List<UploadItem> get _picked => [
+    for (final i in _uploads.queued)
+      if (!_skipped.contains(i.shotId)) i,
+  ];
 
   @override
   void dispose() {
@@ -41,6 +48,7 @@ class _UploadScreenState extends State<UploadScreen> {
     final controller = messenger.showSnackBar(
       SnackBar(
         content: Text('${item.name} removed from the Upload folder'),
+        persist: false,
         action: SnackBarAction(label: 'Undo', onPressed: () => uploads.put(item)),
       ),
     );
@@ -84,14 +92,28 @@ class _UploadScreenState extends State<UploadScreen> {
                   'Edited photos land here, ready for Instagram.',
             );
           }
+          final picked = _picked.length;
+          final all = picked == items.length;
           return CustomScrollView(
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 0, 4, 0),
                 sliver: SliverToBoxAdapter(
-                  child: Text(
-                    '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'} · POSTING ORDER',
-                    style: sectionLabel,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'} · POSTING ORDER · $picked TICKED',
+                          style: sectionLabel,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() {
+                          all ? _skipped.addAll(items.map((i) => i.shotId)) : _skipped.clear();
+                        }),
+                        child: Text(all ? 'Untick all' : 'Tick all'),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -113,7 +135,15 @@ class _UploadScreenState extends State<UploadScreen> {
                         decoration: BoxDecoration(color: negative, borderRadius: BorderRadius.circular(18)),
                         child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
                       ),
-                      child: _UploadRow(index: i, item: item, onTap: () => _reEdit(item)),
+                      child: _UploadRow(
+                        index: i,
+                        item: item,
+                        picked: !_skipped.contains(item.shotId),
+                        onPick: () => setState(() {
+                          if (!_skipped.remove(item.shotId)) _skipped.add(item.shotId);
+                        }),
+                        onEdit: () => _reEdit(item),
+                      ),
                     );
                   },
                 ),
@@ -150,19 +180,36 @@ class _UploadScreenState extends State<UploadScreen> {
       bottomNavigationBar: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
-          final n = uploads.queued.length;
-          if (n == 0) return const SizedBox.shrink();
+          if (uploads.queued.isEmpty) return const SizedBox.shrink();
+          final picked = _picked, n = picked.length, left = uploads.queued.length - n;
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: FilledButton.icon(
-                onPressed: () async {
-                  _saveCaption?.cancel();
-                  await uploads.setCaption(_caption.text);
-                  if (context.mounted) await showPublishSheet(context);
-                },
-                icon: const Icon(Icons.send_rounded),
-                label: Text('Publish $n ${n == 1 ? 'photo' : 'photos'}'),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (left > 0 && n > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        '$left unticked ${left == 1 ? 'photo stays' : 'photos stay'} here for later',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  FilledButton.icon(
+                    onPressed: n == 0
+                        ? null
+                        : () async {
+                            _saveCaption?.cancel();
+                            await uploads.setCaption(_caption.text);
+                            if (context.mounted) await showPublishSheet(context, picked);
+                          },
+                    icon: const Icon(Icons.send_rounded),
+                    label: Text(n == 0 ? 'Tick photos to publish' : 'Publish $n ${n == 1 ? 'photo' : 'photos'}'),
+                  ),
+                ],
               ),
             ),
           );
@@ -173,10 +220,17 @@ class _UploadScreenState extends State<UploadScreen> {
 }
 
 class _UploadRow extends StatelessWidget {
-  const _UploadRow({required this.index, required this.item, required this.onTap});
+  const _UploadRow({
+    required this.index,
+    required this.item,
+    required this.picked,
+    required this.onPick,
+    required this.onEdit,
+  });
   final int index;
   final UploadItem item;
-  final VoidCallback onTap;
+  final bool picked; // ticked for publishing
+  final VoidCallback onPick, onEdit;
 
   String get _summary {
     final p = item.params;
@@ -203,12 +257,28 @@ class _UploadRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onTap,
+        onTap: onEdit,
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           child: Row(
             children: [
-              ClipRRect(
+              IconButton(
+                tooltip: picked ? 'Leave for later' : 'Publish this one',
+                onPressed: onPick,
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),
+                  child: Icon(
+                    picked ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    key: ValueKey(picked),
+                    color: picked ? accent : muted,
+                  ),
+                ),
+              ),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 160),
+                opacity: picked ? 1 : 0.45,
+                child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: SizedBox(
                   width: 72,
@@ -220,6 +290,7 @@ class _UploadRow extends StatelessWidget {
                     errorBuilder: (_, _, _) => const ColoredBox(color: surfaceHigh),
                   ),
                 ),
+              ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -242,6 +313,7 @@ class _UploadRow extends StatelessWidget {
                   ],
                 ),
               ),
+              IconButton(tooltip: 'Edit again', onPressed: onEdit, icon: const Icon(Icons.edit_rounded, color: ink)),
               ReorderableDragStartListener(
                 index: index,
                 child: const Padding(

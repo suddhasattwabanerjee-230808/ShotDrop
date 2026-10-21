@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_channel.dart';
 import '../card_channel.dart';
 import '../edit/crop.dart';
 import '../edit/story.dart';
@@ -12,12 +13,13 @@ import '../publish.dart';
 import '../share_channel.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'app_screens.dart';
 import 'setup_screen.dart';
 
-/// The Publish sheet: how to post the Upload folder. Starts [PublishScreen].
-Future<void> showPublishSheet(BuildContext context) async {
+/// The Publish sheet: how to post [items] (the ones ticked in the Upload
+/// folder; the rest stay there). Starts [PublishScreen].
+Future<void> showPublishSheet(BuildContext context, List<UploadItem> items) async {
   final scope = AppScope.of(context);
-  final items = scope.uploads.queued;
   if (items.isEmpty) return;
   ({bool instagram, bool facebook}) apps;
   try {
@@ -262,6 +264,20 @@ class _PublishScreenState extends State<PublishScreen> {
         for (final item in _steps[i].items) item.shotId,
   };
 
+  bool _helperOn = false; // caption auto-paste is switched on
+
+  Future<bool> _helper() async {
+    final on = await AppChannel.instance.captionHelperOn().catchError((Object _) => false);
+    if (mounted && on != _helperOn) setState(() => _helperOn = on);
+    return on;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _helper();
+  }
+
   @override
   void dispose() {
     final ids = _postedIds;
@@ -279,21 +295,15 @@ class _PublishScreenState extends State<PublishScreen> {
         paths = [await _storyFile(step.items.single)];
       } else {
         paths = [for (final i in step.items) i.exportPath];
-        final caption = _uploads.caption.trim();
-        if (caption.isNotEmpty) {
-          await Clipboard.setData(ClipboardData(text: caption));
-          messenger.showSnackBar(
-            const SnackBar(
-              content: Text('Caption copied. In the composer, long-press the caption box and tap Paste.'),
-              duration: Duration(seconds: 6),
-            ),
-          );
-        }
       }
+      // An Instagram post gets the caption typed in by the helper when it's on; otherwise it's copied for pasting.
+      final caption = step.kind == StepKind.instagramStory ? '' : _uploads.caption.trim();
+      final typed = step.kind == StepKind.instagramPost && caption.isNotEmpty && await _helper();
+      if (caption.isNotEmpty && !typed) await copyCaption(messenger, caption);
       setState(() => _busy = null);
       final app = step.kind == StepKind.facebookPost ? SocialApp.facebook : SocialApp.instagram;
       final kind = step.kind == StepKind.instagramStory ? ShareKind.story : ShareKind.feed;
-      switch (await ShareChannel.instance.share(app, kind, paths)) {
+      switch (await ShareChannel.instance.share(app, kind, paths, caption: typed ? caption : null)) {
         case ShareOutcome.launched:
         case ShareOutcome.chooser:
           setState(() => _opened = true);
@@ -455,9 +465,24 @@ class _PublishScreenState extends State<PublishScreen> {
                 : facebook
                 ? 'Facebook opens a new post with ${step.items.length == 1 ? 'this photo' : 'these photos'}. Paste the caption and tap Post.'
                 : 'Instagram opens a new post with ${step.items.length == 1 ? 'this photo' : 'these photos'}. '
-                      'The caption is copied: long-press the caption box and tap Paste, then Share.',
+                      '${_uploads.caption.trim().isEmpty ? 'Tap Share.' : _helperOn ? 'ShotDrop types the caption in for you; check it, then tap Share.' : 'The caption is copied: long-press the caption box and tap Paste, then Share.'}',
             style: const TextStyle(fontSize: 13, color: muted, height: 1.45),
           ),
+          if (step.kind == StepKind.instagramPost && !_opened && !_helperOn && _uploads.caption.trim().isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                onPressed: () async {
+                  await Navigator.of(
+                    context,
+                  ).push(MaterialPageRoute<void>(builder: (_) => const CaptionHelperScreen()));
+                  _helper();
+                },
+                icon: const Icon(Icons.content_paste_go_rounded, size: 18),
+                label: const Text('Have ShotDrop type the caption in'),
+              ),
+            ),
           const SizedBox(height: 14),
           if (_busy != null)
             Row(

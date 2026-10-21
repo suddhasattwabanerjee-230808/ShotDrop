@@ -11,9 +11,11 @@ import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
 
-/// The Body tab's four tools. Laid out like Cymera's Body screen: the
-/// open tool's slider over the row of tools, Cancel / Body / Apply below;
-/// Slim first asks for the area (a line with a bracket at each end).
+/// The Body tab's four tools. Laid out like Cymera's Body screen (the open
+/// tool's slider over the row of tools), but nothing is modal: changes show
+/// as they're made, undo covers them, and Crop / Adjust stay a tap away.
+/// Slim first asks for the area (a line with a bracket at each end); areas
+/// already made can be tapped to change them again.
 enum BodyTool {
   stretch('Stretch'),
   slim('Slim'),
@@ -108,6 +110,17 @@ class _BodyStageState extends State<BodyStage> {
     );
   }
 
+  /// Which part of [s] is under [pos]: 0 left bracket, 1 right, 2 the line; null if none.
+  int? _slimPart(SlimArea s, Offset pos, Rect rect, BandWarp yWarp, {bool anywhere = false}) {
+    final y = rect.top + yWarp.map(s.y) * rect.height;
+    final ends = [s.left, s.right].map((x) => Offset(rect.left + x * rect.width, y)).toList();
+    final near = (ends[0] - pos).distance <= (ends[1] - pos).distance ? 0 : 1;
+    if ((ends[near] - pos).distance < 44) return near;
+    if (anywhere) return 2;
+    final onLine = (pos.dy - y).abs() < 28 && pos.dx > ends[0].dx - 10 && pos.dx < ends[1].dx + 10;
+    return onLine ? 2 : null;
+  }
+
   /// Slim's area moved by a drag of [delta] (screen pixels) on [part].
   SlimArea _dragSlim(SlimArea s, int part, Offset pos, Offset delta, Rect rect, BandWarp yWarp) {
     final y = yWarp.unmap(((pos.dy - rect.top) / rect.height).clamp(0.02, 0.98));
@@ -136,16 +149,28 @@ class _BodyStageState extends State<BodyStage> {
       final p = widget.params;
       final yWarp = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
       final draft = widget.slimDraft;
+      // Slim, after its area is picked: the newest area can be dragged again,
+      // and tapping an earlier one's line brings it back to change.
+      final active = widget.tool == BodyTool.slim && draft == null && p.slims.isNotEmpty ? p.slims.last : null;
       return GestureDetector(
+        onTapUp: active == null
+            ? null
+            : (d) {
+                for (final (i, s) in p.slims.indexed) {
+                  if (i == p.slims.length - 1 || _slimPart(s, d.localPosition, rect, yWarp) == null) continue;
+                  HapticFeedback.selectionClick();
+                  widget.onCommit(p.copyWith(slims: [...p.slims]..removeAt(i)..add(s)));
+                  return;
+                }
+              },
         onPanStart: (d) {
           final pos = d.localPosition;
           _line = _area = _bracket = null;
           _last = pos;
           if (draft != null) {
-            final y = rect.top + yWarp.map(draft.y) * rect.height;
-            final ends = [draft.left, draft.right].map((x) => Offset(rect.left + x * rect.width, y)).toList();
-            final near = (ends[0] - pos).distance <= (ends[1] - pos).distance ? 0 : 1;
-            _bracket = (ends[near] - pos).distance < 44 ? near : 2;
+            _bracket = _slimPart(draft, pos, rect, yWarp, anywhere: true);
+          } else if (active != null) {
+            _bracket = _slimPart(active, pos, rect, yWarp);
           } else if (widget.tool == BodyTool.stretch) {
             final ys = [p.heightBand.$1, p.heightBand.$2].map((v) => rect.top + yWarp.map(v) * rect.height).toList();
             final near = (ys[0] - pos.dy).abs() <= (ys[1] - pos.dy).abs() ? 0 : 1;
@@ -170,6 +195,9 @@ class _BodyStageState extends State<BodyStage> {
           final delta = pos - (_last ?? pos);
           if (bracket != null && draft != null) {
             widget.onSlimDraft?.call(_dragSlim(draft, bracket, pos, delta, rect, yWarp));
+          } else if (bracket != null && active != null) {
+            final moved = _dragSlim(active, bracket, pos, delta, rect, yWarp);
+            widget.onLive(p.copyWith(slims: [...p.slims.sublist(0, p.slims.length - 1), moved]));
           } else if (line != null) {
             final v = yWarp.unmap(((pos.dy - rect.top) / rect.height).clamp(0.0, 1.0));
             final band = line == 0
@@ -183,7 +211,10 @@ class _BodyStageState extends State<BodyStage> {
           _last = pos;
         },
         onPanEnd: (_) {
+          // A finished drag is one undo step (Slim's area while it's being picked isn't a change yet).
+          final changed = _line != null || _area != null || (_bracket != null && draft == null);
           _line = _area = _bracket = null;
+          if (changed) widget.onCommit();
         },
         child: CustomPaint(
           size: Size.infinite,
@@ -195,6 +226,7 @@ class _BodyStageState extends State<BodyStage> {
             areas: draft != null ? const [] : _areas(p),
             yWarp: yWarp,
             slimDraft: draft,
+            slims: widget.tool == BodyTool.slim && draft == null ? p.slims : const [],
           ),
         ),
       );
@@ -211,6 +243,7 @@ class _BodyPainter extends CustomPainter {
     required this.areas,
     required this.yWarp,
     this.slimDraft,
+    this.slims = const [],
   });
 
   final ui.Image image;
@@ -220,6 +253,7 @@ class _BodyPainter extends CustomPainter {
   final List<BodyArea> areas;
   final BandWarp yWarp;
   final SlimArea? slimDraft;
+  final List<SlimArea> slims; // made already: the last one is being changed, the others can be tapped
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -232,6 +266,9 @@ class _BodyPainter extends CustomPainter {
     if (draft != null) {
       _slimLine(canvas, draft);
       return;
+    }
+    for (final (i, s) in slims.indexed) {
+      _slimLine(canvas, s, opacity: i == slims.length - 1 ? 0.9 : 0.4);
     }
     final edge = Paint()
       ..color = accent
@@ -274,7 +311,7 @@ class _BodyPainter extends CustomPainter {
 
   /// Slim's line, with a dashed bracket at each end curving in towards the
   /// middle ( ")———(" ), white over a soft shadow so it shows on any photo.
-  void _slimLine(Canvas canvas, SlimArea s) {
+  void _slimLine(Canvas canvas, SlimArea s, {double opacity = 1}) {
     final y = rect.top + yWarp.map(s.y) * rect.height;
     final l = rect.left + s.left * rect.width, r = rect.left + s.right * rect.width;
     // The brackets' size follows the line's length, so a narrow pick stays readable.
@@ -282,7 +319,7 @@ class _BodyPainter extends CustomPainter {
     const sweep = 1.05; // half-angle of each arc
     for (final (colour, width) in [(const Color(0x66000000), 4.5), (Colors.white, 2.5)]) {
       final paint = Paint()
-        ..color = colour
+        ..color = colour.withValues(alpha: colour.a * opacity)
         ..strokeWidth = width
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
@@ -326,16 +363,17 @@ class _BodyPainter extends CustomPainter {
       old.params != params ||
       old.rect != rect ||
       old.tool != tool ||
-      old.slimDraft != slimDraft;
+      old.slimDraft != slimDraft ||
+      old.slims != slims;
 }
 
 // --- The panel under the photo -----------------------------------------------------
 
-/// Three states, as in Cymera:
+/// Three states:
 /// - no tool open: the row of tools;
-/// - Slim picking its area: a big ✓ and "Select the waist area.";
-/// - a tool open: its slider (with the value over the thumb) above the row,
-///   then Cancel / Body / Apply for everything changed since it opened.
+/// - Slim picking its area: a big ✓ and "Select the waist area." (as in Cymera);
+/// - a tool open: its slider (with the value over the thumb) above the row.
+///   Tap the open tool again to close it; Crop and Adjust stay below.
 class BodyPanel extends StatelessWidget {
   const BodyPanel({
     super.key,
@@ -344,11 +382,11 @@ class BodyPanel extends StatelessWidget {
     required this.pose,
     required this.onOpen,
     required this.onLive,
-    required this.onCancel,
-    required this.onApply,
+    required this.onCommit,
     this.selecting = false,
     this.onConfirmSlim,
     this.onCancelSlim,
+    this.onNewSlim,
   });
 
   final EditParams params;
@@ -356,9 +394,9 @@ class BodyPanel extends StatelessWidget {
   final PoseStatus pose;
   final ValueChanged<BodyTool> onOpen;
   final ValueChanged<EditParams> onLive;
-  final VoidCallback onCancel, onApply;
+  final void Function([EditParams?]) onCommit;
   final bool selecting; // Slim's area is being picked
-  final VoidCallback? onConfirmSlim, onCancelSlim;
+  final VoidCallback? onConfirmSlim, onCancelSlim, onNewSlim;
 
   @override
   Widget build(BuildContext context) {
@@ -384,35 +422,44 @@ class BodyPanel extends StatelessWidget {
           value: t.value(params).clamp(t.twoWay ? -1.0 : 0.0, 1.0),
           twoWay: t.twoWay,
           onChanged: (v) => onLive(t.withValue(params, v)),
+          onChangeEnd: () => onCommit(),
         ),
+        if (t == BodyTool.slim) _slimActions(),
         const SizedBox(height: 4),
         row,
-        const SizedBox(height: 6),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-          child: Row(
-            children: [
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(minimumSize: const Size(96, 44)),
-                onPressed: onCancel,
-                child: const Text('Cancel'),
-              ),
-              const Expanded(
-                child: Text(
-                  'Body',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-              ),
-              FilledButton(
-                style: FilledButton.styleFrom(minimumSize: const Size(96, 44)),
-                onPressed: onApply,
-                child: const Text('Apply'),
-              ),
-            ],
-          ),
-        ),
+        const SizedBox(height: 12),
       ],
+    );
+  }
+
+  /// Under Slim's slider: another area, or take this one away.
+  Widget _slimActions() {
+    final n = params.slims.length;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              n <= 1 ? 'Drag the line or its brackets to move the area' : 'Tap another line to change that area',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600, height: 1.3),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Remove this area',
+            visualDensity: VisualDensity.compact,
+            onPressed: n == 0 ? null : () => onCommit(params.copyWith(slims: params.slims.sublist(0, n - 1))),
+            icon: const Icon(Icons.delete_outline_rounded, size: 20, color: muted),
+          ),
+          TextButton.icon(
+            onPressed: onNewSlim,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('New area'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -466,10 +513,11 @@ class _ConfirmButton extends StatelessWidget {
 /// "−  ———●———  +" with the value in a bubble over the thumb ("+0.55").
 /// Two-way sliders centre on 0, which is sticky so "untouched" is easy to find.
 class _ValueSlider extends StatelessWidget {
-  const _ValueSlider({required this.value, required this.twoWay, required this.onChanged});
+  const _ValueSlider({required this.value, required this.twoWay, required this.onChanged, required this.onChangeEnd});
   final double value;
   final bool twoWay;
   final ValueChanged<double> onChanged;
+  final VoidCallback onChangeEnd;
 
   static const _pad = 14.0; // the slider's own inset at each end of the track
 
@@ -504,6 +552,7 @@ class _ValueSlider extends StatelessWidget {
                           onChanged(v);
                         },
                         onChangeStart: (_) => HapticFeedback.selectionClick(),
+                        onChangeEnd: (_) => onChangeEnd(),
                       ),
                     ),
                     Positioned(

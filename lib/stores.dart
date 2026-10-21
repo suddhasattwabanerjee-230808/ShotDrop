@@ -10,10 +10,13 @@ import 'card_channel.dart';
 import 'models.dart';
 import 'share_channel.dart';
 
-enum CardState { noFolder, waiting, loading, ready, error }
+enum CardState { noFolder, waiting, newCard, loading, ready, error }
 
 /// The camera card: which folder was picked, whether it's plugged in, and the
-/// shots on it. Rescans by itself when a card is plugged in or pulled out.
+/// shots on it. Rescans by itself when a card is plugged in or pulled out
+/// (and every few seconds while waiting for one, in case the phone doesn't
+/// say). A card picked before opens by itself; a new one asks once, with the
+/// picker already on its DCIM folder.
 class CardStore extends ChangeNotifier {
   CardStore({CardChannel? channel}) : _channel = channel ?? CardChannel.instance;
 
@@ -24,7 +27,10 @@ class CardStore extends ChangeNotifier {
   CardState state = CardState.noFolder;
   List<CardShot> shots = const [];
   String? error;
+  String? cardName; // the plugged-in card, while it's waiting to be opened (newCard)
   StreamSubscription<void>? _volumes;
+  Timer? _poll;
+  bool _refreshing = false, _again = false;
 
   Future<void> load() async {
     folder = await SharedPreferencesAsync().getString(_folderKey).catchError((Object _) => null);
@@ -35,37 +41,79 @@ class CardStore extends ChangeNotifier {
   Future<bool> pickFolder() async {
     final picked = await _channel.pickFolder();
     if (picked == null) return false;
-    folder = picked;
-    await SharedPreferencesAsync().setString(_folderKey, picked).catchError((Object _) {});
+    await _use(picked);
     await refresh();
     return true;
   }
 
+  Future<void> _use(String f) async {
+    folder = f;
+    await SharedPreferencesAsync().setString(_folderKey, f).catchError((Object _) {});
+  }
+
   Future<void> refresh() async {
-    final f = folder;
-    if (f == null) {
-      _set(CardState.noFolder);
+    if (_refreshing) {
+      _again = true;
       return;
     }
+    _refreshing = true;
     try {
-      switch (await _channel.access(f)) {
-        case CardAccess.noPermission:
-          folder = null;
-          _set(CardState.noFolder);
-          return;
-        case CardAccess.missing:
-          shots = const [];
-          _set(CardState.waiting);
-          return;
-        case CardAccess.ok:
-          if (state != CardState.ready) _set(CardState.loading);
-          shots = pairShots(await _channel.list(f));
-          _set(CardState.ready);
+      do {
+        _again = false;
+        await _refresh();
+      } while (_again);
+    } finally {
+      _refreshing = false;
+    }
+    // Waiting for a card: look again every few seconds.
+    final waiting = state == CardState.noFolder || state == CardState.waiting || state == CardState.newCard;
+    if (waiting && _poll == null) {
+      _poll = Timer.periodic(const Duration(seconds: 3), (_) => refresh());
+    } else if (!waiting) {
+      _poll?.cancel();
+      _poll = null;
+    }
+  }
+
+  Future<void> _refresh() async {
+    try {
+      var f = folder;
+      var access = f == null ? CardAccess.missing : await _channel.access(f);
+      if (access != CardAccess.ok) {
+        // Not there: another card (or folder) picked before that's plugged in now?
+        final other = await _channel.findCard();
+        if (other != null) {
+          await _use(other);
+          f = other;
+          access = CardAccess.ok;
+        }
       }
+      if (access == CardAccess.noPermission) folder = null;
+      if (access != CardAccess.ok || f == null) {
+        shots = const [];
+        cardName = await _channel.cardVolume();
+        _set(cardName != null ? CardState.newCard : (folder == null ? CardState.noFolder : CardState.waiting));
+        return;
+      }
+      cardName = null;
+      if (state != CardState.ready) _set(CardState.loading);
+      final listed = pairShots(await _channel.list(f));
+      // Only tell the screens when something changed (a rescan finds the same card most of the time).
+      if (state == CardState.ready && _sameShots(listed, shots)) return;
+      shots = listed;
+      _set(CardState.ready);
     } catch (e) {
       error = '$e';
       _set(CardState.error);
     }
+  }
+
+  static bool _sameShots(List<CardShot> a, List<CardShot> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].taken != b[i].taken) return false;
+    }
+    return true;
   }
 
   void _set(CardState s) {
@@ -76,6 +124,7 @@ class CardStore extends ChangeNotifier {
   @override
   void dispose() {
     _volumes?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 }
