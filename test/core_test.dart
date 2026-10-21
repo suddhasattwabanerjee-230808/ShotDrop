@@ -135,6 +135,14 @@ void main() {
       final w = BandWarp(0.2, 0.7, 0);
       expect(w.isIdentity, isTrue);
       expect(w.map(0.37), 0.37);
+      expect(w.growth, 1);
+    });
+
+    test('stretch grows the photo by the band\'s extra length and leaves the rest its size', () {
+      final w = BandWarp(0.4, 0.9, 0.3);
+      expect(w.growth, closeTo(1 + 0.3 * 0.5, 0.01));
+      // Above the band, a stretch of photo is just as tall in the grown photo.
+      expect((w.map(0.2) - w.map(0.1)) * w.growth, closeTo(0.1, 1e-3));
     });
   });
 
@@ -194,6 +202,37 @@ void main() {
           expect(moved, greaterThan(last));
           last = moved;
         }
+      }
+    });
+
+    test('legs slide in towards each other at the knees, not at the hips or ankles', () {
+      const body = BodyAnchors.defaults;
+      final warps = bodyWarps(0, 0, 1, body);
+      final (left, right) = (warps[0], warps[1]);
+      expect(left.dx(body.legs[0].cx, body.legs[0].cy), greaterThan(0.02));
+      expect(right.dx(body.legs[1].cx, body.legs[1].cy), lessThan(-0.02));
+      final top = body.legs[0].cy - body.legs[0].ry * 0.9;
+      expect(left.dx(body.legs[0].cx, top), lessThan(left.dx(body.legs[0].cx, body.legs[0].cy) * 0.1));
+      // Across the knees, nothing folds over.
+      var last = -1.0;
+      for (var i = 0; i <= 400; i++) {
+        final x = i / 400;
+        final moved = x + left.dx(x, body.legs[0].cy) + right.dx(x, body.legs[0].cy);
+        expect(moved, greaterThan(last));
+        last = moved;
+      }
+    });
+
+    test('hip lifts the hips up without folding', () {
+      const body = BodyAnchors.defaults;
+      final hip = bodyWarps(0, 1, 0, body).single;
+      expect(hip.dy(body.hips.cx, body.hips.cy), lessThan(0));
+      var last = -1.0;
+      for (var i = 0; i <= 400; i++) {
+        final y = i / 400;
+        final moved = y + hip.dy(body.hips.cx, y);
+        expect(moved, greaterThan(last));
+        last = moved;
       }
     });
 
@@ -266,16 +305,26 @@ void main() {
       }
     });
 
-    test('reshape and filter keep the frame size and paint the whole frame', () async {
+    test('stretch makes the photo taller; reshape and filter paint the whole frame', () async {
       final src = await solid(120, 160);
       const p = EditParams(height: 0.3, slim: 1, hips: 1, legs: 1, filter: 'vivid');
       final out = await renderFinal(src, p);
-      expect([out.width, out.height], [120, 160]);
+      final h = finishedSize(const Size(120, 160), p).height.toInt();
+      expect(out.width, 120);
+      expect(h, greaterThan(160));
+      expect(out.height, h);
       final bytes = (await out.toByteData(format: ui.ImageByteFormat.rawRgba))!;
       // Corners and centre are opaque: the mesh covers the frame edge to edge.
-      for (final (x, y) in [(0, 0), (119, 0), (0, 159), (119, 159), (60, 80)]) {
+      for (final (x, y) in [(0, 0), (119, 0), (0, h - 1), (119, h - 1), (60, h ~/ 2)]) {
         expect(bytes.getUint8((y * 120 + x) * 4 + 3), 255, reason: 'alpha at $x,$y');
       }
+    });
+
+    test('a stretched photo still keeps the long-edge cap', () async {
+      final src = await solid(80, 200);
+      final out = await renderFinal(src, const EditParams(height: 0.4), maxEdge: 200);
+      expect(out.height, 200);
+      expect(out.width, lessThan(80));
     });
   });
 

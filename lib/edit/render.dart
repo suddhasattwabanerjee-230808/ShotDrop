@@ -70,13 +70,21 @@ Future<ui.Image> renderCropped(ui.Image src, EditParams p, {int? maxEdge}) {
   return recorder.endRecording().toImage(out.width.toInt(), out.height.toInt());
 }
 
-/// Draws the cropped photo into [out] with the body reshape and colour filter.
+/// Stretch's warp down the cropped photo.
+BandWarp stretchWarp(EditParams p) => BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
+
+/// Size of the finished photo made from a cropped photo of [cropped]: Stretch makes it taller.
+Size finishedSize(Size cropped, EditParams p) =>
+    Size(cropped.width, (cropped.height * stretchWarp(p).growth).roundToDouble());
+
+/// Draws the cropped photo into [out] (its [finishedSize], scaled) with the
+/// body reshape and colour filter.
 void paintFinish(Canvas canvas, ui.Image cropped, Size out, EditParams p, {bool colour = true}) {
   final matrix = matrixFor(p);
   final paint = Paint()..filterQuality = FilterQuality.high;
   if (colour && !isIdentity(matrix)) paint.colorFilter = ColorFilter.matrix(matrix);
   final src = Size(cropped.width.toDouble(), cropped.height.toDouble());
-  final yWarp = BandWarp(p.heightBand.$1, p.heightBand.$2, p.height);
+  final yWarp = stretchWarp(p);
   final local = bodyWarps(p.slim, p.hips, p.legs, p.bodyOrDefault);
   if (yWarp.isIdentity && local.isEmpty) {
     canvas.drawImageRect(cropped, Offset.zero & src, Offset.zero & out, paint);
@@ -91,10 +99,12 @@ final _identity4 = Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 
 /// The finished photo, at most [maxEdge] pixels on its long side.
 Future<ui.Image> renderFinal(ui.Image src, EditParams p, {int maxEdge = 2160}) async {
   final cropped = await renderCropped(src, p, maxEdge: maxEdge);
-  final out = Size(cropped.width.toDouble(), cropped.height.toDouble());
+  final grown = finishedSize(Size(cropped.width.toDouble(), cropped.height.toDouble()), p);
+  final k = math.min(1.0, maxEdge / math.max(grown.width, grown.height));
+  final out = Size(math.max(1, (grown.width * k).roundToDouble()), math.max(1, (grown.height * k).roundToDouble()));
   final recorder = ui.PictureRecorder();
   paintFinish(Canvas(recorder), cropped, out, p);
-  final image = await recorder.endRecording().toImage(cropped.width, cropped.height);
+  final image = await recorder.endRecording().toImage(out.width.toInt(), out.height.toInt());
   cropped.dispose();
   return image;
 }

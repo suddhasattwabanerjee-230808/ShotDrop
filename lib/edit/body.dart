@@ -107,22 +107,35 @@ class BodyAnchors {
   }
 }
 
-/// A local push across (x only) around an area: [amount] < 0 draws the area
-/// in towards its centre line (slimmer), > 0 pushes it out (wider). Falls off
-/// smoothly, so the background around it bends only a little.
+/// A local warp around an area, falling off smoothly so the background
+/// around it bends only a little:
+/// - [amount] < 0 draws the area in towards its centre line (slimmer), > 0
+///   pushes it out (wider);
+/// - [shift] slides it across (in reaches, + to the right), strongest at the
+///   area's middle and fading out fast above and below it;
+/// - [lift] moves it up (in reaches down).
 class LocalWarp {
-  const LocalWarp(this.area, this.amount);
+  const LocalWarp(this.area, this.amount, {this.shift = 0, this.lift = 0});
   final BodyArea area;
-  final double amount;
+  final double amount, shift, lift;
 
   /// How far a point at ([x], [y]) moves across.
   double dx(double x, double y) {
     final u = (x - area.cx) / area.rx, v = (y - area.cy) / area.ry;
     final d = u * u + v * v;
     if (d > 9) return 0;
-    return amount * (x - area.cx) * math.exp(-d);
+    return amount * (x - area.cx) * math.exp(-d) + shift * area.rx * math.exp(-u * u - 3 * v * v);
+  }
+
+  /// How far a point at ([x], [y]) moves down.
+  double dy(double x, double y) {
+    if (lift == 0) return 0;
+    final u = (x - area.cx) / area.rx, v = (y - area.cy) / area.ry;
+    final d = u * u + v * v;
+    return d > 9 ? 0 : -lift * area.ry * math.exp(-d);
   }
 }
 
 // Strength at 100 on each slider.
-const maxSlim = -0.34, maxHips = 0.3, maxLegs = -0.36, maxStretch = 0.4;
+// Strong enough to see, weak enough that the photo never folds over itself.
+const maxSlim = -0.34, maxHips = 0.3, maxHipLift = 0.3, maxLegs = 0.55, maxStretch = 0.4;

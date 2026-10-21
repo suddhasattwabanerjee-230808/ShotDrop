@@ -187,7 +187,7 @@ class _UploadRow extends StatelessWidget {
       if (p.height > 0) 'stretched',
       if (p.slim > 0) 'slimmer',
       if (p.hips > 0) 'hips',
-      if (p.legs > 0) 'slimmer legs',
+      if (p.legs > 0) 'straighter legs',
       if (p.brightness != 0 || p.contrast != 0 || p.saturation != 0 || p.warmth != 0) 'adjusted',
     ];
     return parts.isEmpty ? 'No changes' : parts.join(' · ');
