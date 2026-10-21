@@ -35,6 +35,16 @@ jobs:
           fi
           echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
 
+      # The NDK download from Google sometimes arrives cut short ("unknown
+      # archive"), failing the build; fetch it first, retrying.
+      - name: Install the Android NDK
+        run: |
+          for i in 1 2 3; do
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;28.2.13676358" < /dev/null > /dev/null && exit 0
+            echo "NDK download failed (try $i), retrying"; sleep 15
+          done
+          exit 1
+
       # arm64 only: every phone this will be installed on is 64-bit.
       - run: flutter build apk --release --target-platform android-arm64
         env:
