@@ -69,7 +69,7 @@ class _GridScreenState extends State<GridScreen> {
       SnackBar(
         duration: const Duration(seconds: 3),
         persist: false,
-        content: Text(picked.length == 1 ? 'Adding to Selected…' : 'Adding ${picked.length} photos to Selected…'),
+        content: Text(picked.length == 1 ? 'Adding To Selected…' : 'Adding ${picked.length} Photos To Selected…'),
         action: SnackBarAction(label: 'View', onPressed: () => HomeShell.go(context, HomeTab.selected)),
       ),
     );
@@ -95,7 +95,7 @@ class _GridScreenState extends State<GridScreen> {
         SnackBar(
           duration: const Duration(seconds: 3),
           persist: false,
-          content: Text(saved == 1 ? 'Added to the Upload folder' : '$saved photos added to the Upload folder'),
+          content: Text(saved == 1 ? 'Added To The Upload Folder' : '$saved Photos Added To The Upload Folder'),
           action: SnackBarAction(label: 'Open', onPressed: () => HomeShell.go(context, HomeTab.upload)),
         ),
       );
@@ -150,7 +150,7 @@ class _GridScreenState extends State<GridScreen> {
         body: shots.isEmpty
             ? const StatePanel(
                 icon: Icons.photo_library_outlined,
-                title: 'No photos here',
+                title: 'No Photos Here',
                 body: 'This folder has no JPG or NEF files. Pick the card\'s DCIM folder from the menu.',
               )
             : RefreshIndicator(
@@ -254,7 +254,7 @@ class _DayHeader extends StatelessWidget {
         ),
         const Spacer(),
         if (selecting)
-          TextButton(onPressed: onToggle, child: Text(allSelected ? 'Clear day' : 'Select day'))
+          TextButton(onPressed: onToggle, child: Text(allSelected ? 'Clear Day' : 'Select Day'))
         else
           const SizedBox(height: 40),
       ],

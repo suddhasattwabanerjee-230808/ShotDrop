@@ -441,14 +441,14 @@ class BodyPanel extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              n <= 1 ? 'Drag the line or its brackets to move the area' : 'Tap another line to change that area',
+              n <= 1 ? 'Drag The Line Or Its Brackets To Move The Area' : 'Tap Another Line To Change That Area',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600, height: 1.3),
             ),
           ),
           IconButton(
-            tooltip: 'Remove this area',
+            tooltip: 'Remove This Area',
             visualDensity: VisualDensity.compact,
             onPressed: n == 0 ? null : () => onCommit(params.copyWith(slims: params.slims.sublist(0, n - 1))),
             icon: const Icon(Icons.delete_outline_rounded, size: 20, color: muted),
@@ -456,7 +456,7 @@ class BodyPanel extends StatelessWidget {
           TextButton.icon(
             onPressed: onNewSlim,
             icon: const Icon(Icons.add_rounded, size: 18),
-            label: const Text('New area'),
+            label: const Text('New Area'),
           ),
         ],
       ),
@@ -644,9 +644,9 @@ class _PoseLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, text, color) = switch (status) {
-      PoseStatus.detecting => (null, 'Finding the body…', muted),
-      PoseStatus.found => (Icons.person_search_rounded, 'Body found: the tools know where to work', positive),
-      PoseStatus.notFound => (Icons.touch_app_rounded, 'No person found: you\'ll place each tool by hand', muted),
+      PoseStatus.detecting => (null, 'Finding The Body…', muted),
+      PoseStatus.found => (Icons.person_search_rounded, 'Body Found: The Tools Know Where To Work', positive),
+      PoseStatus.notFound => (Icons.touch_app_rounded, 'No Person Found: You\'ll Place Each Tool By Hand', muted),
     };
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,

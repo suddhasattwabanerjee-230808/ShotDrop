@@ -65,11 +65,11 @@ class _PublishSheetState extends State<_PublishSheet> {
   String _describe(PublishMode m) {
     final posts = (_n / carouselMax).ceil();
     final post = _n == 1
-        ? '1 post'
+        ? '1 Post'
         : posts == 1
-        ? '1 carousel of $_n'
-        : '$posts carousels';
-    final stories = _n == 1 ? '1 story' : '$_n stories';
+        ? '1 Carousel Of $_n'
+        : '$posts Carousels';
+    final stories = _n == 1 ? '1 Story' : '$_n Stories';
     return switch (m) {
       PublishMode.post => post,
       PublishMode.postAndStory => '$post + $stories',
@@ -90,7 +90,7 @@ class _PublishSheetState extends State<_PublishSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Publish $_n ${_n == 1 ? 'photo' : 'photos'}',
+              'Publish $_n ${_n == 1 ? 'Photo' : 'Photos'}',
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
@@ -99,7 +99,7 @@ class _PublishSheetState extends State<_PublishSheet> {
               child: ListenableBuilder(
                 listenable: social,
                 builder: (context, _) => Text(
-                  social.handle.isEmpty ? 'To Instagram · set your username' : 'To Instagram as @${social.handle}',
+                  social.handle.isEmpty ? 'To Instagram · Set Your Username' : 'To Instagram As @${social.handle}',
                   style: const TextStyle(color: accent, fontWeight: FontWeight.w700),
                 ),
               ),
@@ -119,7 +119,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 contentPadding: EdgeInsets.zero,
                 value: _facebook,
                 onChanged: widget.apps.facebook ? (v) => setState(() => _facebook = v) : null,
-                title: const Text('Also open Facebook for the post', style: TextStyle(fontWeight: FontWeight.w700)),
+                title: const Text('Also Open Facebook For The Post', style: TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(
                   !widget.apps.facebook
                       ? 'The Facebook app isn\'t installed.'
@@ -148,7 +148,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                   'https://play.google.com/store/apps/details?id=com.instagram.android',
                 ),
                 icon: const Icon(Icons.download_rounded),
-                label: const Text('Install Instagram first'),
+                label: const Text('Install Instagram First'),
               ),
           ],
         ),
@@ -291,7 +291,7 @@ class _PublishScreenState extends State<PublishScreen> {
     try {
       List<String> paths;
       if (step.kind == StepKind.instagramStory) {
-        setState(() => _busy = 'Getting the story ready…');
+        setState(() => _busy = 'Getting The Story Ready…');
         paths = [await _storyFile(step.items.single)];
       } else {
         paths = [for (final i in step.items) i.previewPath];
@@ -325,7 +325,7 @@ class _PublishScreenState extends State<PublishScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _busy = null);
-      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t open it: $e')));
+      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t Open It: $e')));
     }
   }
 
@@ -372,7 +372,7 @@ class _PublishScreenState extends State<PublishScreen> {
         title: const Text('Stop publishing?'),
         content: const Text('What you\'ve posted so far is saved. The rest stays in the Upload folder.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep going')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Going')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Stop')),
         ],
       ),
@@ -396,7 +396,7 @@ class _PublishScreenState extends State<PublishScreen> {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_finished ? 'All done' : 'Publishing'),
+              Text(_finished ? 'All Done' : 'Publishing'),
               Text(
                 '${widget.mode.label}${social.handle.isEmpty ? '' : ' · @${social.handle}'}',
                 style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
@@ -423,7 +423,7 @@ class _PublishScreenState extends State<PublishScreen> {
         ),
       ),
       const SizedBox(height: 8),
-      Text('Step ${_current + 1} of ${_steps.length}', style: sectionLabel),
+      Text('Step ${_current + 1} Of ${_steps.length}', style: sectionLabel),
       const SizedBox(height: 12),
       for (var i = 0; i < _steps.length; i++)
         i == _current ? _currentCard(_steps[i]) : _StepRow(step: _steps[i], status: _status[i], index: i),
@@ -480,7 +480,7 @@ class _PublishScreenState extends State<PublishScreen> {
                   _helper();
                 },
                 icon: const Icon(Icons.content_paste_go_rounded, size: 18),
-                label: const Text('Have ShotDrop type the caption in'),
+                label: const Text('Have ShotDrop Type The Caption In'),
               ),
             ),
           const SizedBox(height: 14),
@@ -499,18 +499,18 @@ class _PublishScreenState extends State<PublishScreen> {
               icon: const Icon(Icons.open_in_new_rounded),
               label: Text('Open $appName'),
             ),
-            TextButton(onPressed: () => _resolve(_Status.skipped), child: const Text('Skip this one')),
+            TextButton(onPressed: () => _resolve(_Status.skipped), child: const Text('Skip This One')),
           ] else ...[
             FilledButton.icon(
               onPressed: () => _resolve(_Status.done),
               icon: const Icon(Icons.check_rounded),
-              label: const Text('Yes, it\'s posted'),
+              label: const Text('Yes, It\'s Posted'),
             ),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton(onPressed: _open, child: const Text('Open again')),
+                  child: OutlinedButton(onPressed: _open, child: const Text('Open Again')),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -531,22 +531,22 @@ class _PublishScreenState extends State<PublishScreen> {
     final fbShares = AppScope.of(context).social.instagramSharesToFacebook;
     final nothing = ids.isEmpty;
     final counts = [
-      '${ids.length} ${ids.length == 1 ? 'photo' : 'photos'}',
-      if (posts.isNotEmpty) '${posts.length} ${posts.length == 1 ? 'post' : 'posts'}',
-      if (stories.isNotEmpty) '${stories.length} ${stories.length == 1 ? 'story' : 'stories'}',
+      '${ids.length} ${ids.length == 1 ? 'Photo' : 'Photos'}',
+      if (posts.isNotEmpty) '${posts.length} ${posts.length == 1 ? 'Post' : 'Posts'}',
+      if (stories.isNotEmpty) '${stories.length} ${stories.length == 1 ? 'Story' : 'Stories'}',
     ].join(' · ');
     final facebook = fbShares ? '\nInstagram shares them to your Facebook too.' : '';
     return StatePanel(
       icon: nothing ? Icons.outbox_rounded : Icons.check_rounded,
       iconWidget: nothing ? null : const _DoneBadge(),
-      title: nothing ? 'Nothing was posted' : 'Posted to Instagram',
+      title: nothing ? 'Nothing Was Posted' : 'Posted To Instagram',
       body: nothing
           ? 'Everything is still in the Upload folder for next time.'
           : '$counts$facebook\nThe edited copies are now in Pictures/ShotDrop/Published.',
       actions: [
         FilledButton(
           onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
-          child: const Text('Back to the card'),
+          child: const Text('Back To The Card'),
         ),
       ],
     );

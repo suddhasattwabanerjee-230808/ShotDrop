@@ -1,9 +1,9 @@
 import 'models.dart';
 
 enum PublishMode {
-  post('Post only'),
+  post('Post Only'),
   postAndStory('Post + Story'),
-  story('Story only');
+  story('Story Only');
 
   const PublishMode(this.label);
   final String label;
@@ -21,9 +21,9 @@ class PublishStep {
   final List<UploadItem> items;
 
   String get title => switch (kind) {
-    StepKind.instagramPost => items.length == 1 ? 'Instagram post' : 'Instagram carousel · ${items.length} photos',
-    StepKind.instagramStory => 'Instagram story · ${items.single.name}',
-    StepKind.facebookPost => items.length == 1 ? 'Facebook post' : 'Facebook post · ${items.length} photos',
+    StepKind.instagramPost => items.length == 1 ? 'Instagram Post' : 'Instagram Carousel · ${items.length} Photos',
+    StepKind.instagramStory => 'Instagram Story · ${items.single.name}',
+    StepKind.facebookPost => items.length == 1 ? 'Facebook Post' : 'Facebook Post · ${items.length} Photos',
   };
 }
 

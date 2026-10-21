@@ -10,14 +10,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shotdrop/main.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/screens/editor_screen.dart';
 import 'package:shotdrop/screens/viewer_screen.dart';
 import 'package:shotdrop/stores.dart';
 import 'package:shotdrop/update.dart';
-import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 const outDir = String.fromEnvironment('PREVIEW_DIR');
 // Optional: a phone screenshot with a person in it, and the y range (in
@@ -99,9 +98,7 @@ void main() {
   late List<CardFile> files;
 
   setUpAll(() async {
-    SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.withData({
-      'shotdrop.card_folder.v1': 'content://tree/DCIM',
-    });
+    SharedPreferences.setMockInitialValues({'shotdrop.card_folder.v1': 'content://tree/DCIM'});
     tmp = Directory.systemTemp.createTempSync('shotdrop_preview');
     files = [];
     final base = DateTime(2026, 10, 21, 18, 40).millisecondsSinceEpoch;
@@ -300,6 +297,10 @@ void main() {
     await tester.tap(find.text('Body'));
     await tester.pump(const Duration(milliseconds: 300));
     await shot(tester, '5e_body_applied');
+    // Crop after the body tools: the frame shows the slimmed photo.
+    await tester.tap(find.text('Crop'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 600)));
+    await shot(tester, '5f_crop_after_body');
 
     await tester.tap(find.text('Done'));
     // The export is real work: wait for the editor to close by itself.
@@ -327,22 +328,22 @@ void main() {
     await shot(tester, '10_publish_post_step');
     await tester.tap(find.text('Open Instagram'));
     await shot(tester, '11_publish_post_asking');
-    await tester.tap(find.text("Yes, it's posted"));
+    await tester.tap(find.text("Yes, It's Posted"));
     await shot(tester, '11b_publish_facebook_step');
     await tester.tap(find.text('Open Facebook'));
     await shot(tester, '11c_publish_facebook_asking');
-    await tester.tap(find.text("Yes, it's posted"));
+    await tester.tap(find.text("Yes, It's Posted"));
     await shot(tester, '12_publish_story_step');
     await tester.tap(find.text('Open Instagram'));
     // The story render (blur at 1080 x 1920) is slow on the test renderer.
     await tester.runAsync(() async {
-      for (var i = 0; i < 300 && find.text("Yes, it's posted").evaluate().isEmpty; i++) {
+      for (var i = 0; i < 300 && find.text("Yes, It's Posted").evaluate().isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 100));
       }
     });
     await shot(tester, '13_publish_story_asking');
-    await tester.tap(find.text("Yes, it's posted"));
+    await tester.tap(find.text("Yes, It's Posted"));
     await shot(tester, '14_publish_done');
     await tester.runAsync(() async {
       final story = Directory('${tmp.path}/app/uploads')

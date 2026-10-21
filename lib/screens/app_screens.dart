@@ -37,7 +37,7 @@ class _UpdateSheet extends StatelessWidget {
         );
       }
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t update: $e')));
+      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t Update: $e')));
     }
   }
 
@@ -55,12 +55,12 @@ class _UpdateSheet extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                latest != null ? 'ShotDrop ${latest.version} is out' : 'Update app',
+                latest != null ? 'ShotDrop ${latest.version} Is Out' : 'Update App',
                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
-                updater.current.isEmpty ? '' : 'This phone has ${updater.current}',
+                updater.current.isEmpty ? '' : 'This Phone Has ${updater.current}',
                 style: const TextStyle(color: muted, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 16),
@@ -99,7 +99,7 @@ class _UpdateSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Downloading… ${(progress * 100).round()}% of ${(latest.apkSize / 1e6).toStringAsFixed(0)} MB',
+                    'Downloading… ${(progress * 100).round()}% Of ${(latest.apkSize / 1e6).toStringAsFixed(0)} MB',
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: muted, fontWeight: FontWeight.w600),
                   ),
@@ -107,7 +107,7 @@ class _UpdateSheet extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: () => _install(context),
                     icon: const Icon(Icons.system_update_rounded),
-                    label: Text('Update to ${latest.version}'),
+                    label: Text('Update To ${latest.version}'),
                   ),
                 const SizedBox(height: 8),
                 const Text(
@@ -122,7 +122,7 @@ class _UpdateSheet extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: updater.check,
                     icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Check again'),
+                    label: const Text('Check Again'),
                   ),
                 ),
             ],
@@ -195,7 +195,7 @@ class _CaptionHelperScreenState extends State<CaptionHelperScreen> with WidgetsB
   Widget build(BuildContext context) {
     final on = _on;
     return Scaffold(
-      appBar: AppBar(title: const Text('Caption auto-paste')),
+      appBar: AppBar(title: const Text('Caption Auto-Paste')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
@@ -263,7 +263,7 @@ class _CaptionHelperScreenState extends State<CaptionHelperScreen> with WidgetsB
           OutlinedButton.icon(
             onPressed: AppChannel.instance.openAppInfo,
             icon: const Icon(Icons.info_outline_rounded),
-            label: const Text('Open App info'),
+            label: const Text('Open App Info'),
           ),
           const SizedBox(height: 18),
           const Text(

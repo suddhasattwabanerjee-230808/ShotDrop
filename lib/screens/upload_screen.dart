@@ -41,7 +41,24 @@ class _UploadScreenState extends State<UploadScreen> {
     super.dispose();
   }
 
-  /// Swiped away: back to Selected (with its edit), not deleted.
+  /// Swiped left: deleted from the Upload folder (with an Undo). The photo
+  /// stays on the card; ShotDrop's copies go once the Undo is gone.
+  Future<void> _delete(UploadItem item) async {
+    final uploads = AppScope.of(context).uploads;
+    final messenger = ScaffoldMessenger.of(context);
+    await uploads.remove(item.shotId);
+    messenger.hideCurrentSnackBar();
+    final controller = messenger.showSnackBar(
+      SnackBar(
+        content: Text('${item.name} Deleted From Upload'),
+        persist: false,
+        action: SnackBarAction(label: 'Undo', onPressed: () => uploads.put(item)),
+      ),
+    );
+    controller.closed.then((_) => uploads.purge(item));
+  }
+
+  /// Swiped right: back to Selected (with its edit), not deleted.
   Future<void> _setAside(UploadItem item) async {
     final uploads = AppScope.of(context).uploads;
     final messenger = ScaffoldMessenger.of(context);
@@ -49,7 +66,7 @@ class _UploadScreenState extends State<UploadScreen> {
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
       SnackBar(
-        content: Text('${item.name} moved to Selected'),
+        content: Text('${item.name} Moved To Selected'),
         persist: false,
         action: SnackBarAction(label: 'Undo', onPressed: () => uploads.put(item)),
       ),
@@ -69,7 +86,7 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
     return Scaffold(
-      appBar: AppBar(title: const Text('Upload folder')),
+      appBar: AppBar(title: const Text('Upload Folder')),
       body: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
@@ -79,7 +96,7 @@ class _UploadScreenState extends State<UploadScreen> {
               padding: const EdgeInsets.only(bottom: navBarClearance),
               child: StatePanel(
                 icon: Icons.outbox_rounded,
-                title: 'Nothing to post yet',
+                title: 'Nothing To Post Yet',
                 body:
                     'Edit a photo from the Gallery or from Selected and it lands here, ready for Instagram. '
                     'Swipe one away to set it aside in Selected.',
@@ -104,7 +121,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'} · POSTING ORDER · $picked TICKED',
+                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'} · $picked SELECTED',
                           style: sectionLabel,
                         ),
                       ),
@@ -112,7 +129,7 @@ class _UploadScreenState extends State<UploadScreen> {
                         onPressed: () => setState(() {
                           all ? _skipped.addAll(items.map((i) => i.shotId)) : _skipped.clear();
                         }),
-                        child: Text(all ? 'Untick all' : 'Tick all'),
+                        child: Text(all ? 'Deselect All' : 'Select All'),
                       ),
                     ],
                   ),
@@ -125,23 +142,23 @@ class _UploadScreenState extends State<UploadScreen> {
                   onReorderItem: uploads.reorder,
                   itemBuilder: (context, i) {
                     final item = items[i];
+                    // Right: back to Selected, edit and all. Left: out of the Upload folder for good.
                     return Dismissible(
                       key: ValueKey(item.shotId),
-                      direction: DismissDirection.endToStart,
-                      onDismissed: (_) => _setAside(item),
-                      background: Container(
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 24),
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(color: surfaceHigh, borderRadius: BorderRadius.circular(18)),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('To Selected', style: TextStyle(color: accent, fontWeight: FontWeight.w800)),
-                            SizedBox(width: 8),
-                            Icon(Icons.favorite_rounded, color: accent),
-                          ],
-                        ),
+                      onDismissed: (d) => d == DismissDirection.startToEnd ? _setAside(item) : _delete(item),
+                      background: const _SwipeBackground(
+                        left: true,
+                        color: surfaceHigh,
+                        icon: Icons.favorite_rounded,
+                        label: 'Move To Selected',
+                        fg: accent,
+                      ),
+                      secondaryBackground: const _SwipeBackground(
+                        left: false,
+                        color: negative,
+                        icon: Icons.delete_outline_rounded,
+                        label: 'Delete',
+                        fg: Colors.white,
                       ),
                       child: _UploadRow(
                         index: i,
@@ -170,7 +187,7 @@ class _UploadScreenState extends State<UploadScreen> {
                         maxLines: 8,
                         maxLength: 2200, // Instagram's caption limit
                         textCapitalization: TextCapitalization.sentences,
-                        decoration: const InputDecoration(hintText: 'Write a caption… #hashtags work too'),
+                        decoration: const InputDecoration(hintText: 'Write A Caption… #hashtags Work Too'),
                         onChanged: (v) {
                           _saveCaption?.cancel();
                           _saveCaption = Timer(const Duration(milliseconds: 600), () => uploads.setCaption(v));
@@ -201,7 +218,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        '$left unticked ${left == 1 ? 'photo goes' : 'photos go'} back to Selected once you\'ve posted',
+                        '$left unselected ${left == 1 ? 'photo goes' : 'photos go'} back to Selected once you\'ve posted',
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                       ),
@@ -215,7 +232,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             if (context.mounted) await showPublishSheet(context, picked);
                           },
                     icon: const Icon(Icons.send_rounded),
-                    label: Text(n == 0 ? 'Tick photos to publish' : 'Publish $n ${n == 1 ? 'photo' : 'photos'}'),
+                    label: Text(n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
                   ),
                 ],
               ),
@@ -244,17 +261,17 @@ class _UploadRow extends StatelessWidget {
     final p = item.params;
     final parts = <String>[
       if (p.aspect != AspectPreset.original) p.aspect.label,
-      if (p.quarterTurns != 0 || p.straighten != 0) 'rotated',
+      if (p.quarterTurns != 0 || p.straighten != 0) 'Rotated',
       if (p.filter != 'original') presetById(p.filter).label,
-      if (p.height > 0) 'taller',
-      if (p.height < 0) 'shorter',
-      if (p.slims.any((s) => s.amount > 0)) 'slimmer',
-      if (p.slims.any((s) => s.amount < 0)) 'wider',
-      if (p.hips > 0) 'hips',
-      if (p.legs > 0) 'slimmer legs',
-      if (p.brightness != 0 || p.contrast != 0 || p.saturation != 0 || p.warmth != 0) 'adjusted',
+      if (p.height > 0) 'Taller',
+      if (p.height < 0) 'Shorter',
+      if (p.slims.any((s) => s.amount > 0)) 'Slimmer',
+      if (p.slims.any((s) => s.amount < 0)) 'Wider',
+      if (p.hips > 0) 'Fuller Hips',
+      if (p.legs > 0) 'Slimmer Legs',
+      if (p.brightness != 0 || p.contrast != 0 || p.saturation != 0 || p.warmth != 0) 'Adjusted',
     ];
-    return parts.isEmpty ? 'No changes' : parts.join(' · ');
+    return parts.isEmpty ? 'No Changes' : parts.join(' · ');
   }
 
   @override
@@ -271,7 +288,7 @@ class _UploadRow extends StatelessWidget {
           child: Row(
             children: [
               IconButton(
-                tooltip: picked ? 'Leave for later' : 'Publish this one',
+                tooltip: picked ? 'Leave For Later' : 'Publish This One',
                 onPressed: onPick,
                 icon: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 160),
@@ -321,7 +338,7 @@ class _UploadRow extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(tooltip: 'Edit again', onPressed: onEdit, icon: const Icon(Icons.edit_rounded, color: ink)),
+              IconButton(tooltip: 'Edit Again', onPressed: onEdit, icon: const Icon(Icons.edit_rounded, color: ink)),
               ReorderableDragStartListener(
                 index: index,
                 child: const Padding(
@@ -335,4 +352,35 @@ class _UploadRow extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// What shows under a row while it's swiped.
+class _SwipeBackground extends StatelessWidget {
+  const _SwipeBackground({
+    required this.left,
+    required this.color,
+    required this.icon,
+    required this.label,
+    required this.fg,
+  });
+  final bool left; // swiped to the right, so this shows on the left
+  final Color color, fg;
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = [
+      Icon(icon, color: fg),
+      const SizedBox(width: 8),
+      Text(label, style: TextStyle(color: fg, fontWeight: FontWeight.w800)),
+    ];
+    return Container(
+      alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(18)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: left ? parts : parts.reversed.toList()),
+    );
+  }
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.2] - 2026-10-22 (build 8)
+
+Fixes, and tidier words.
+
+- **Edits stay together.** Moving a Body slider no longer wipes the filter and adjustments (on the phone they vanished as soon as a slider left 0, and wouldn't have been saved either). The Crop page now shows the photo as it'll be saved, slimmed and filtered, inside the frame.
+- **Settings are remembered.** The welcome page shows on the first start only, your Instagram username is kept, and so are the card folder and every setting. They were being lost on each restart.
+- **Unplugging the card** empties the Gallery straight away and shows "Plug In Your Camera Card" again.
+- **Upload folder:** swipe right to move a photo to Selected, swipe left to delete it from the Upload folder (Undo to bring it back). "Select All" / "Deselect All".
+- Every button, title and label is in Title Case.
+- The Instagram logo marks your account in Settings.
+
 ## [0.5.1] - 2026-10-22 (build 7)
 
 Opens again.

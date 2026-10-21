@@ -56,19 +56,26 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
 
   Widget _body(BuildContext context, CardStore card) {
     switch (card.state) {
+      // No card in (unplugged, or never picked): the same first page either way.
       case CardState.noFolder:
+      case CardState.waiting:
         return StatePanel(
           icon: Icons.sd_card_outlined,
           iconWidget: const _PulsingIcon(icon: Icons.sd_card_outlined),
-          title: 'Plug in your camera card',
+          title: 'Plug In Your Camera Card',
           body:
               'Put the D5600\'s SD card in a card reader and connect it to the phone with the OTG adapter. '
               'ShotDrop notices it by itself.',
           actions: [
+            OutlinedButton.icon(
+              onPressed: card.refresh,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Check Again'),
+            ),
             TextButton.icon(
               onPressed: () => _pick(context),
               icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('Choose a folder instead'),
+              label: const Text('Choose A Folder Instead'),
             ),
           ],
         );
@@ -76,7 +83,7 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
         return StatePanel(
           icon: Icons.sd_card_rounded,
           iconWidget: const _PulsingIcon(icon: Icons.sd_card_rounded),
-          title: 'Card found',
+          title: 'Card Found',
           body:
               'Android asks once per card before an app can read it. Tap below, then "Use this folder" and "Allow": '
               'the card\'s DCIM folder is already open. Next time this card opens by itself.',
@@ -88,36 +95,21 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
             ),
           ],
         );
-      case CardState.waiting:
-        return StatePanel(
-          icon: Icons.usb_rounded,
-          iconWidget: const _PulsingIcon(icon: Icons.usb_rounded),
-          title: 'Waiting for the card',
-          body: 'Connect the card reader. The photos will open by themselves as soon as the card shows up.',
-          actions: [
-            OutlinedButton.icon(
-              onPressed: card.refresh,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Check again'),
-            ),
-            TextButton(onPressed: () => _pick(context), child: const Text('Use a different card')),
-          ],
-        );
       case CardState.loading:
         return const StatePanel(
           icon: Icons.sd_card_outlined,
           iconWidget: SizedBox(width: 96, height: 96, child: CircularProgressIndicator(strokeWidth: 3)),
-          title: 'Reading the card…',
+          title: 'Reading The Card…',
           body: 'Finding every photo in the DCIM folder.',
         );
       case CardState.error:
         return StatePanel(
           icon: Icons.error_outline_rounded,
-          title: 'Couldn\'t read the card',
+          title: 'Couldn\'t Read The Card',
           body: card.error ?? 'Something went wrong.',
           actions: [
-            FilledButton(onPressed: card.refresh, child: const Text('Try again')),
-            TextButton(onPressed: () => _pick(context), child: const Text('Choose the folder again')),
+            FilledButton(onPressed: card.refresh, child: const Text('Try Again')),
+            TextButton(onPressed: () => _pick(context), child: const Text('Choose The Folder Again')),
           ],
         );
       case CardState.ready:
@@ -135,7 +127,7 @@ Future<void> pickCardFolder(BuildContext context) async {
   try {
     await AppScope.of(context).card.pickFolder();
   } catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text('Couldn\'t open that folder: $e')));
+    messenger.showSnackBar(SnackBar(content: Text('Couldn\'t Open That Folder: $e')));
   }
 }
 
@@ -207,8 +199,8 @@ class CardMenuButton extends StatelessWidget {
       if (v == 'folder') pickCardFolder(context);
     },
     itemBuilder: (_) => const [
-      PopupMenuItem(value: 'rescan', child: Text('Rescan the card')),
-      PopupMenuItem(value: 'folder', child: Text('Choose another folder')),
+      PopupMenuItem(value: 'rescan', child: Text('Rescan The Card')),
+      PopupMenuItem(value: 'folder', child: Text('Choose Another Folder')),
     ],
   );
 }

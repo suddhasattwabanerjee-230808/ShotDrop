@@ -69,12 +69,12 @@ class _ViewerScreenState extends State<ViewerScreen> {
     final hasNext = _index < widget.shots.length - 1;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Added to the Upload folder'),
+        content: const Text('Added To The Upload Folder'),
         duration: const Duration(seconds: 3),
         persist: false, // with a button it would otherwise stay until tapped
         action: hasNext
             ? SnackBarAction(
-                label: 'Next photo',
+                label: 'Next Photo',
                 onPressed: () =>
                     _pages.nextPage(duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic),
               )
@@ -217,9 +217,9 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                   ? FilledButton.icon(
                                       onPressed: _edit,
                                       icon: Icon(queued ? Icons.tune_rounded : Icons.auto_fix_high_rounded),
-                                      label: Text(queued ? 'Edit again' : 'Edit before upload'),
+                                      label: Text(queued ? 'Edit Again' : 'Edit Before Upload'),
                                     )
-                                  : const OutlinedButton(onPressed: null, child: Text('RAW only: can\'t be edited')),
+                                  : const OutlinedButton(onPressed: null, child: Text('RAW Only: Can\'t Be Edited')),
                             ),
                           ],
                         );
@@ -318,7 +318,7 @@ class _HeartButton extends StatelessWidget {
       builder: (context, _) {
         final kept = uploads.isSelected(shot.id), queued = uploads.contains(shot.id);
         return IconButton(
-          tooltip: kept ? 'Remove from Selected' : 'Add to Selected',
+          tooltip: kept ? 'Remove From Selected' : 'Add To Selected',
           onPressed: shot.jpg == null
               ? null
               : () async {
@@ -326,7 +326,7 @@ class _HeartButton extends StatelessWidget {
                   final messenger = ScaffoldMessenger.of(context);
                   if (queued) {
                     messenger.showSnackBar(
-                      const SnackBar(duration: Duration(seconds: 3), content: Text('It\'s in the Upload folder already')),
+                      const SnackBar(duration: Duration(seconds: 3), content: Text('It\'s In The Upload Folder Already')),
                     );
                   } else if (kept) {
                     final item = await uploads.remove(shot.id);

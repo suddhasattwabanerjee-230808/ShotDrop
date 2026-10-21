@@ -40,7 +40,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
         SnackBar(
           duration: const Duration(seconds: 3),
           persist: false,
-          content: Text(saved == 1 ? 'Moved to the Upload folder' : '$saved photos moved to the Upload folder'),
+          content: Text(saved == 1 ? 'Moved To The Upload Folder' : '$saved Photos Moved To The Upload Folder'),
           action: SnackBarAction(label: 'Open', onPressed: () => HomeShell.go(context, HomeTab.upload)),
         ),
       );
@@ -58,7 +58,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
     final controller = messenger.showSnackBar(
       SnackBar(
         persist: false,
-        content: Text(items.length == 1 ? '${items.single.name} removed' : '${items.length} photos removed'),
+        content: Text(items.length == 1 ? '${items.single.name} removed' : '${items.length} Photos Removed'),
         action: SnackBarAction(
           label: 'Undo',
           onPressed: () async {
@@ -107,7 +107,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
                         child: const Text('All'),
                       ),
                       IconButton(
-                        tooltip: 'Remove from Selected',
+                        tooltip: 'Remove From Selected',
                         onPressed: () => _remove(picked),
                         icon: const Icon(Icons.delete_outline_rounded),
                       ),
@@ -120,9 +120,9 @@ class _SelectedScreenState extends State<SelectedScreen> {
                         const Text('Selected'),
                         Text(
                           items.isEmpty
-                              ? 'Your shortlist'
-                              : '${items.length} ${items.length == 1 ? 'photo' : 'photos'}'
-                                    '${edited > 0 ? ' · $edited edited' : ''}',
+                              ? 'Your Shortlist'
+                              : '${items.length} ${items.length == 1 ? 'Photo' : 'Photos'}'
+                                    '${edited > 0 ? ' · $edited Edited' : ''}',
                           style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                         ),
                       ],
@@ -139,7 +139,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
                           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
                           const SizedBox(width: 10),
                           Text(
-                            'Copying ${uploads.copying} from the card…',
+                            'Copying ${uploads.copying} From The Card…',
                             style: const TextStyle(color: muted, fontWeight: FontWeight.w700),
                           ),
                         ],
@@ -151,7 +151,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
                     hasScrollBody: false,
                     child: StatePanel(
                       icon: Icons.favorite_border_rounded,
-                      title: 'Nothing selected yet',
+                      title: 'Nothing Selected Yet',
                       body:
                           'Tap ♡ on a photo in the Gallery, or long-press a few and tap "Add to Selected". '
                           'They\'re kept here, even with the card unplugged, until you edit and post them. '
@@ -192,7 +192,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
                         child: FilledButton.icon(
                           onPressed: () => _edit(picked),
                           icon: const Icon(Icons.auto_fix_high_rounded),
-                          label: Text('Edit for upload (${picked.length})'),
+                          label: Text('Edit For Upload (${picked.length})'),
                         ),
                       ),
                     )

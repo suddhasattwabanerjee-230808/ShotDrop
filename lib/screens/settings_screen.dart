@@ -79,13 +79,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   /// "DCIM on the card (1A2B-3C4D)" from the folder's tree uri.
   static String _folderName(String? uri) {
-    if (uri == null) return 'None picked yet';
+    if (uri == null) return 'None Picked Yet';
     final id = Uri.decodeComponent(uri.split('/tree/').last);
     final (volume, path) = switch (id.indexOf(':')) {
       -1 => ('', id),
       final i => (id.substring(0, i), id.substring(i + 1)),
     };
-    final where = volume == 'primary' ? 'on the phone' : 'on the card${volume.isEmpty ? '' : ' ($volume)'}';
+    final where = volume == 'primary' ? 'On The Phone' : 'On The Card${volume.isEmpty ? '' : ' ($volume)'}';
     return '${path.isEmpty ? 'The whole drive' : path} $where';
   }
 
@@ -113,7 +113,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete copies')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete Copies')),
         ],
       ),
     );
@@ -139,20 +139,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Row(
                   icon: Icons.alternate_email_rounded,
+                  leading: const InstagramLogo(),
                   title: scope.social.handle.isEmpty ? 'Instagram & Facebook' : '@${scope.social.handle}',
                   subtitle: scope.social.instagramSharesToFacebook
-                      ? 'Posts also go to Facebook, through Instagram'
-                      : 'Username, apps, sharing to Facebook',
+                      ? 'Posts Also Go To Facebook, Through Instagram'
+                      : 'Username, Apps, Sharing To Facebook',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SetupScreen())),
                 ),
                 _Row(
                   icon: Icons.content_paste_go_rounded,
-                  title: 'Caption auto-paste',
+                  title: 'Caption Auto-Paste',
                   subtitle: _captionOn == null
                       ? '…'
                       : _captionOn!
-                      ? 'On: ShotDrop types the caption into Instagram'
-                      : 'Off: the caption is copied for you to paste',
+                      ? 'On: ShotDrop Types The Caption Into Instagram'
+                      : 'Off: The Caption Is Copied For You To Paste',
                   trailing: _Pill(on: _captionOn == true),
                   onTap: () async {
                     await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CaptionHelperScreen()));
@@ -171,13 +172,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 ),
                 _Row(
                   icon: Icons.folder_open_rounded,
-                  title: 'Choose another folder',
+                  title: 'Choose Another Folder',
                   onTap: () async {
                     await pickCardFolder(context);
                     if (context.mounted && scope.card.shots.isNotEmpty) HomeShell.go(context, HomeTab.gallery);
                   },
                 ),
-                _Row(icon: Icons.refresh_rounded, title: 'Rescan the card', onTap: scope.card.refresh),
+                _Row(icon: Icons.refresh_rounded, title: 'Rescan The Card', onTap: scope.card.refresh),
               ],
             ),
             _Section(
@@ -185,21 +186,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Switch(
                   icon: Icons.crop_portrait_rounded,
-                  title: 'Start portrait photos at 4:5',
+                  title: 'Start Portrait Photos At 4:5',
                   subtitle: 'Instagram\'s tallest post shape; the D5600\'s 2:3 gets cropped otherwise',
                   value: settings.portraitAt45,
                   onChanged: (v) => settings.set(portraitAt45: v),
                 ),
                 _Choice<int>(
                   icon: Icons.photo_size_select_large_rounded,
-                  title: 'Saved size',
+                  title: 'Saved Size',
                   value: settings.saveEdge,
-                  options: const [(2160, 'Sharpest', '2160 px'), (1080, 'Smaller', '1080 px, Instagram\'s size')],
+                  options: const [(2160, 'Sharpest', '2160 px'), (1080, 'Smaller', '1080 px, Instagram\'s Size')],
                   onChanged: (v) => settings.set(saveEdge: v),
                 ),
                 _Switch(
                   icon: Icons.photo_album_outlined,
-                  title: 'Copy edits to the gallery',
+                  title: 'Copy Edits To The Gallery',
                   subtitle: 'In Pictures/ShotDrop, so other apps can use them',
                   value: settings.galleryCopy,
                   onChanged: (v) => settings.set(galleryCopy: v),
@@ -211,7 +212,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Choice<String>(
                   icon: Icons.send_rounded,
-                  title: 'Publish starts on',
+                  title: 'Publish Starts On',
                   value: settings.publishMode,
                   options: [for (final m in PublishMode.values) (m.name, m.label, null)],
                   onChanged: (v) => settings.set(publishMode: v),
@@ -223,17 +224,17 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Row(
                   icon: Icons.inventory_2_outlined,
-                  title: 'Photos ShotDrop keeps',
-                  subtitle: '${_mb(_keptBytes)} · Selected, Upload folder and posted copies',
+                  title: 'Photos ShotDrop Keeps',
+                  subtitle: '${_mb(_keptBytes)} · Selected, Upload Folder And Posted Copies',
                 ),
                 _Row(
                   icon: Icons.cleaning_services_outlined,
-                  title: 'Free up space from posted photos',
+                  title: 'Free Up Space From Posted Photos',
                   onTap: _clearPosted,
                 ),
                 _Row(
                   icon: Icons.layers_clear_outlined,
-                  title: 'Clear thumbnails and downloads',
+                  title: 'Clear Thumbnails And Downloads',
                   subtitle: _mb(_cacheBytes),
                   onTap: _clearCache,
                 ),
@@ -244,21 +245,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Row(
                   icon: Icons.system_update_rounded,
-                  title: scope.updater.available ? 'Update to ${scope.updater.latest!.version}' : 'Check for updates',
-                  subtitle: _version.isEmpty ? null : 'This is ShotDrop $_version',
+                  title: scope.updater.available ? 'Update To ${scope.updater.latest!.version}' : 'Check For Updates',
+                  subtitle: _version.isEmpty ? null : 'This Is ShotDrop $_version',
                   trailing: scope.updater.available ? const _Dot() : null,
                   onTap: () => showUpdateSheet(context),
                 ),
                 _Switch(
                   icon: Icons.update_rounded,
-                  title: 'Check for updates at launch',
+                  title: 'Check For Updates At Launch',
                   value: settings.checkUpdates,
                   onChanged: (v) => settings.set(checkUpdates: v),
                 ),
                 _Row(
                   icon: Icons.info_outline_rounded,
                   title: 'About ShotDrop',
-                  subtitle: 'D5600 card → edit → Instagram',
+                  subtitle: 'D5600 Card → Edit → Instagram',
                   onTap: () => showLicensePage(context: context, applicationName: 'ShotDrop', applicationVersion: _version),
                 ),
               ],
@@ -301,8 +302,9 @@ class _Section extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.icon, required this.title, this.subtitle, this.trailing, this.onTap});
+  const _Row({required this.icon, required this.title, this.subtitle, this.trailing, this.onTap, this.leading});
   final IconData icon;
+  final Widget? leading; // in place of the icon (the Instagram logo)
   final String title;
   final String? subtitle;
   final Widget? trailing;
@@ -310,7 +312,7 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
-    leading: Icon(icon, color: accent),
+    leading: leading ?? Icon(icon, color: accent),
     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
     subtitle: subtitle == null ? null : Text(subtitle!, style: const TextStyle(color: muted, fontSize: 12)),
     trailing: trailing ?? (onTap == null ? null : const Icon(Icons.chevron_right_rounded, color: muted)),

@@ -83,8 +83,16 @@ void paintFinish(Canvas canvas, ui.Image cropped, Size out, EditParams p, {bool 
     canvas.drawImageRect(cropped, Offset.zero & src, Offset.zero & out, paint);
     return;
   }
-  paint.shader = ImageShader(cropped, TileMode.clamp, TileMode.clamp, _identity4, filterQuality: FilterQuality.high);
-  canvas.drawVertices(buildWarpMesh(src, out, yWarp, slims: slims, local: local), BlendMode.srcOver, paint);
+  // The colour goes on a layer around the mesh, not on its Paint: Impeller (on
+  // the phone) ignores a colorFilter in drawVertices, so filters and
+  // adjustments vanished as soon as a body tool moved off 0.
+  final filter = paint.colorFilter;
+  if (filter != null) canvas.saveLayer(Offset.zero & out, Paint()..colorFilter = filter);
+  final mesh = Paint()
+    ..filterQuality = FilterQuality.high
+    ..shader = ImageShader(cropped, TileMode.clamp, TileMode.clamp, _identity4, filterQuality: FilterQuality.high);
+  canvas.drawVertices(buildWarpMesh(src, out, yWarp, slims: slims, local: local), BlendMode.srcOver, mesh);
+  if (filter != null) canvas.restore();
 }
 
 final _identity4 = Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);

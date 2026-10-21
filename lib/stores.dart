@@ -10,6 +10,12 @@ import 'card_channel.dart';
 import 'models.dart';
 import 'share_channel.dart';
 
+/// The app's saved settings: Android's plain SharedPreferences file. (Not
+/// SharedPreferencesAsync: its DataStore didn't survive R8 in release builds,
+/// and every setting, from the Instagram username to the card folder, was
+/// lost on restart.)
+Future<SharedPreferences> prefs() => SharedPreferences.getInstance();
+
 enum CardState { noFolder, waiting, newCard, loading, ready, error }
 
 /// The camera card: which folder was picked, whether it's plugged in, and the
@@ -33,9 +39,25 @@ class CardStore extends ChangeNotifier {
   bool _refreshing = false, _again = false;
 
   Future<void> load() async {
-    folder = await SharedPreferencesAsync().getString(_folderKey).catchError((Object _) => null);
+    folder = (await prefs()).getString(_folderKey);
     _volumes = _channel.volumeChanges.listen((_) => refresh());
+    // The phone doesn't always say when a USB card comes or goes, so look every few seconds too.
+    _poll = Timer.periodic(const Duration(seconds: 3), (_) => _tick());
     await refresh();
+  }
+
+  /// With photos showing, only checks the card's still there (one small
+  /// query); otherwise looks for a card again.
+  Future<void> _tick() async {
+    final f = folder;
+    if (_refreshing) return;
+    if (state == CardState.ready && f != null) {
+      final here = await _channel.access(f).catchError((Object _) => CardAccess.missing);
+      if (here == CardAccess.ok) return;
+    }
+    if (state == CardState.ready || state == CardState.noFolder || state == CardState.waiting || state == CardState.newCard) {
+      await refresh();
+    }
   }
 
   Future<bool> pickFolder() async {
@@ -48,7 +70,7 @@ class CardStore extends ChangeNotifier {
 
   Future<void> _use(String f) async {
     folder = f;
-    await SharedPreferencesAsync().setString(_folderKey, f).catchError((Object _) {});
+    await (await prefs()).setString(_folderKey, f);
   }
 
   Future<void> refresh() async {
@@ -64,14 +86,6 @@ class CardStore extends ChangeNotifier {
       } while (_again);
     } finally {
       _refreshing = false;
-    }
-    // Waiting for a card: look again every few seconds.
-    final waiting = state == CardState.noFolder || state == CardState.waiting || state == CardState.newCard;
-    if (waiting && _poll == null) {
-      _poll = Timer.periodic(const Duration(seconds: 3), (_) => refresh());
-    } else if (!waiting) {
-      _poll?.cancel();
-      _poll = null;
     }
   }
 
@@ -375,26 +389,26 @@ class SocialSettings extends ChangeNotifier {
   bool setupSeen = false;
 
   Future<void> load() async {
-    final prefs = SharedPreferencesAsync();
-    handle = await prefs.getString(_handleKey).catchError((Object _) => null) ?? '';
-    instagramSharesToFacebook = await prefs.getBool(_fbShareKey).catchError((Object _) => null) ?? false;
-    setupSeen = await prefs.getBool(_setupKey).catchError((Object _) => null) ?? false;
+    final p = await prefs();
+    handle = p.getString(_handleKey) ?? '';
+    instagramSharesToFacebook = p.getBool(_fbShareKey) ?? false;
+    setupSeen = p.getBool(_setupKey) ?? false;
     notifyListeners();
   }
 
   Future<void> save({String? handle, bool? instagramSharesToFacebook, bool? setupSeen}) async {
-    final prefs = SharedPreferencesAsync();
+    final p = await prefs();
     if (handle != null) {
       this.handle = handle.trim().replaceFirst(RegExp(r'^@+'), '');
-      await prefs.setString(_handleKey, this.handle).catchError((Object _) {});
+      await p.setString(_handleKey, this.handle);
     }
     if (instagramSharesToFacebook != null) {
       this.instagramSharesToFacebook = instagramSharesToFacebook;
-      await prefs.setBool(_fbShareKey, instagramSharesToFacebook).catchError((Object _) {});
+      await p.setBool(_fbShareKey, instagramSharesToFacebook);
     }
     if (setupSeen != null) {
       this.setupSeen = setupSeen;
-      await prefs.setBool(_setupKey, setupSeen).catchError((Object _) {});
+      await p.setBool(_setupKey, setupSeen);
     }
     notifyListeners();
   }
@@ -411,38 +425,36 @@ class AppSettings extends ChangeNotifier {
   bool checkUpdates = true; // look for a new version at launch
 
   Future<void> load() async {
-    final p = SharedPreferencesAsync();
-    Future<T?> get<T>(Future<T?> f) => f.catchError((Object _) => null);
-    portraitAt45 = await get(p.getBool('${_prefix}portraitAt45')) ?? portraitAt45;
-    saveEdge = await get(p.getInt('${_prefix}saveEdge')) ?? saveEdge;
-    galleryCopy = await get(p.getBool('${_prefix}galleryCopy')) ?? galleryCopy;
-    publishMode = await get(p.getString('${_prefix}publishMode')) ?? publishMode;
-    checkUpdates = await get(p.getBool('${_prefix}checkUpdates')) ?? checkUpdates;
+    final p = await prefs();
+    portraitAt45 = p.getBool('${_prefix}portraitAt45') ?? portraitAt45;
+    saveEdge = p.getInt('${_prefix}saveEdge') ?? saveEdge;
+    galleryCopy = p.getBool('${_prefix}galleryCopy') ?? galleryCopy;
+    publishMode = p.getString('${_prefix}publishMode') ?? publishMode;
+    checkUpdates = p.getBool('${_prefix}checkUpdates') ?? checkUpdates;
     notifyListeners();
   }
 
   Future<void> set({bool? portraitAt45, int? saveEdge, bool? galleryCopy, String? publishMode, bool? checkUpdates}) async {
-    final p = SharedPreferencesAsync();
-    Future<void> quietly(Future<void> f) => f.catchError((Object _) {});
+    final p = await prefs();
     if (portraitAt45 != null) {
       this.portraitAt45 = portraitAt45;
-      await quietly(p.setBool('${_prefix}portraitAt45', portraitAt45));
+      await p.setBool('${_prefix}portraitAt45', portraitAt45);
     }
     if (saveEdge != null) {
       this.saveEdge = saveEdge;
-      await quietly(p.setInt('${_prefix}saveEdge', saveEdge));
+      await p.setInt('${_prefix}saveEdge', saveEdge);
     }
     if (galleryCopy != null) {
       this.galleryCopy = galleryCopy;
-      await quietly(p.setBool('${_prefix}galleryCopy', galleryCopy));
+      await p.setBool('${_prefix}galleryCopy', galleryCopy);
     }
     if (publishMode != null) {
       this.publishMode = publishMode;
-      await quietly(p.setString('${_prefix}publishMode', publishMode));
+      await p.setString('${_prefix}publishMode', publishMode);
     }
     if (checkUpdates != null) {
       this.checkUpdates = checkUpdates;
-      await quietly(p.setBool('${_prefix}checkUpdates', checkUpdates));
+      await p.setBool('${_prefix}checkUpdates', checkUpdates);
     }
     notifyListeners();
   }

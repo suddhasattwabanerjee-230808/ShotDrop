@@ -222,3 +222,47 @@ String clock(DateTime d) {
 
 String fileSize(int bytes) =>
     bytes >= 1 << 20 ? '${(bytes / (1 << 20)).toStringAsFixed(1)} MB' : '${(bytes / 1024).round()} KB';
+
+/// The Instagram logo (the camera glyph on its gradient), drawn so it needs
+/// no image file: marks the Instagram account in Settings.
+class InstagramLogo extends StatelessWidget {
+  const InstagramLogo({super.key, this.size = 28});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) =>
+      CustomPaint(size: Size.square(size), painter: const _InstagramLogoPainter());
+}
+
+class _InstagramLogoPainter extends CustomPainter {
+  const _InstagramLogoPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final s = size.width;
+    final box = Offset.zero & size;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(box, Radius.circular(s * 0.28)),
+      Paint()
+        ..shader = const RadialGradient(
+          center: Alignment(-0.7, 1.1),
+          radius: 1.5,
+          colors: [Color(0xFFFFD522), Color(0xFFF1570C), Color(0xFFD72F7C), Color(0xFF9B2BB5), Color(0xFF5A4FCF)],
+          stops: [0, 0.3, 0.55, 0.8, 1],
+        ).createShader(box),
+    );
+    final white = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = s * 0.085;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTWH(s * 0.2, s * 0.2, s * 0.6, s * 0.6), Radius.circular(s * 0.18)),
+      white,
+    );
+    canvas.drawCircle(Offset(s * 0.5, s * 0.5), s * 0.14, white);
+    canvas.drawCircle(Offset(s * 0.665, s * 0.335), s * 0.045, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(_InstagramLogoPainter old) => false;
+}

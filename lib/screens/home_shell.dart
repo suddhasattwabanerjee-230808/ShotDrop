@@ -71,7 +71,7 @@ class _HomeShellState extends State<HomeShell> {
       SnackBar(
         duration: const Duration(seconds: 6),
         persist: false,
-        content: Text('ShotDrop ${latest.version} is out'),
+        content: Text('ShotDrop ${latest.version} Is Out'),
         action: SnackBarAction(label: 'Update', onPressed: () => showUpdateSheet(context)),
       ),
     );

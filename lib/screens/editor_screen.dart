@@ -76,7 +76,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // The cropped preview the Body and Adjust tools draw on; rebuilt when the crop changes.
   ui.Image? _cropped;
-  String? _croppedFor;
+  String? _croppedFor; // the crop being rendered (or rendered)
+  String? _croppedIs; // the crop _cropped actually shows
 
   static const _previewEdge = 1600;
 
@@ -116,7 +117,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!await File(path).exists()) {
         final card = target.card;
         if (card == null) throw 'The original isn\'t on the phone any more, and the card isn\'t plugged in.';
-        setState(() => _status = 'Copying from the card…');
+        setState(() => _status = 'Copying From The Card…');
         await CardChannel.instance.importSource(card, path);
       }
       final image = await _decode(path, maxEdge: _previewEdge);
@@ -176,7 +177,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final settings = AppScope.of(context).settings;
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
-      _status = 'Saving to the Upload folder…';
+      _status = 'Saving To The Upload Folder…';
       _bodyTool = null;
       _slimDraft = null;
       // Slim areas left at 0 do nothing; don't keep them.
@@ -221,7 +222,7 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _status = null);
-      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t save this photo: $e')));
+      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t Save This Photo: $e')));
     }
   }
 
@@ -236,6 +237,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _cropped?.dispose();
       _cropped = null;
       _croppedFor = null;
+      _croppedIs = null;
     });
     _open();
   }
@@ -248,7 +250,7 @@ class _EditorScreenState extends State<EditorScreen> {
           title: const Text('Discard this edit?'),
           content: const Text('The changes to this photo won\'t be saved.'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep editing')),
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Editing')),
             TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Discard')),
           ],
         ),
@@ -297,7 +299,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _ensureCropped() {
     final src = _preview;
-    if (src == null || _tool == _Tool.crop) return;
+    if (src == null) return;
+    // On the Crop tab, only once a change is let go of (not on every frame of a drag).
+    if (_tool == _Tool.crop && (_h < 0 || !identical(_p, _history[_h]))) return;
     final key = _cropKey(_p);
     if (key == _croppedFor) return;
     _croppedFor = key;
@@ -306,6 +310,7 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() {
         _cropped?.dispose();
         _cropped = img;
+        _croppedIs = key;
       });
     });
   }
@@ -365,7 +370,7 @@ class _EditorScreenState extends State<EditorScreen> {
             children: [
               Text(_target.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               Text(
-                multi ? 'Photo ${_index + 1} of ${widget.targets.length}' : 'Edit before upload',
+                multi ? 'Photo ${_index + 1} Of ${widget.targets.length}' : 'Edit Before Upload',
                 style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
               ),
             ],
@@ -389,11 +394,11 @@ class _EditorScreenState extends State<EditorScreen> {
         body: _error != null
             ? StatePanel(
                 icon: Icons.broken_image_outlined,
-                title: 'Couldn\'t open this photo',
+                title: 'Couldn\'t Open This Photo',
                 body: _error!,
                 actions: [
-                  FilledButton(onPressed: _open, child: const Text('Try again')),
-                  if (multi) TextButton(onPressed: _next, child: const Text('Skip it')),
+                  FilledButton(onPressed: _open, child: const Text('Try Again')),
+                  if (multi) TextButton(onPressed: _next, child: const Text('Skip It')),
                 ],
               )
             : Column(
@@ -413,7 +418,13 @@ class _EditorScreenState extends State<EditorScreen> {
     if (_comparing) {
       view = CustomPaint(painter: _ImagePainter(src), size: Size.infinite); // ignores the crop: the whole original
     } else if (_tool == _Tool.crop) {
-      view = _CropStage(image: src, params: _p, onLive: _live, onCommit: _commit);
+      view = _CropStage(
+        image: src,
+        params: _p,
+        onLive: _live,
+        onCommit: _commit,
+        finished: _croppedIs == _cropKey(_p) ? _cropped : null,
+      );
     } else {
       final cropped = _cropped;
       view = cropped == null
@@ -471,7 +482,7 @@ class _EditorScreenState extends State<EditorScreen> {
                           Icon(Icons.compare_rounded, size: 20, color: _comparing ? accent : ink),
                           const SizedBox(width: 6),
                           Text(
-                            _comparing ? 'Original' : 'Hold to compare',
+                            _comparing ? 'Original' : 'Hold To Compare',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -626,10 +637,11 @@ class _ImagePainter extends CustomPainter {
 
 /// The whole photo (rotated, straightened, coloured) with the crop frame over it.
 class _OrientedPainter extends CustomPainter {
-  _OrientedPainter(this.image, this.params, this.rect);
+  _OrientedPainter(this.image, this.params, this.rect, {this.finished});
   final ui.Image image;
   final EditParams params;
   final Rect rect;
+  final ui.Image? finished; // the cropped photo for exactly this crop: shown with the body edits inside the frame
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -644,7 +656,6 @@ class _OrientedPainter extends CustomPainter {
     if (!isIdentity(matrix)) canvas.restore();
     canvas.restore();
 
-    // Dim outside the frame, then the frame, thirds and corner handles.
     final c = params.crop;
     final frame = Rect.fromLTRB(
       rect.left + c.left * rect.width,
@@ -652,6 +663,16 @@ class _OrientedPainter extends CustomPainter {
       rect.left + c.right * rect.width,
       rect.top + c.bottom * rect.height,
     );
+    // Inside the frame, the photo as it'll be saved: Slim, Stretch, Hip, Legs and colour.
+    final done = finished;
+    if (done != null) {
+      canvas.save();
+      canvas.translate(frame.left, frame.top);
+      paintFinish(canvas, done, frame.size, params);
+      canvas.restore();
+    }
+
+    // Dim outside the frame, then the frame, thirds and corner handles.
     canvas.drawPath(
       Path.combine(PathOperation.difference, Path()..addRect(rect.inflate(1)), Path()..addRect(frame)),
       Paint()..color = const Color(0xB3000000),
@@ -688,7 +709,8 @@ class _OrientedPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OrientedPainter old) => old.image != image || old.params != params || old.rect != rect;
+  bool shouldRepaint(_OrientedPainter old) =>
+      old.image != image || old.params != params || old.rect != rect || old.finished != finished;
 }
 
 /// The cropped photo with the body tools and colour applied (the Adjust view).
@@ -713,9 +735,16 @@ class _FinishPainter extends CustomPainter {
 // --- Stages (the big preview, with its gestures) -------------------------------------
 
 class _CropStage extends StatefulWidget {
-  const _CropStage({required this.image, required this.params, required this.onLive, required this.onCommit});
+  const _CropStage({
+    required this.image,
+    required this.params,
+    required this.onLive,
+    required this.onCommit,
+    this.finished,
+  });
   final ui.Image image;
   final EditParams params;
+  final ui.Image? finished; // see _OrientedPainter.finished
   final ValueChanged<EditParams> onLive;
   final void Function([EditParams?]) onCommit;
 
@@ -771,7 +800,10 @@ class _CropStageState extends State<_CropStage> {
           _startCrop = null;
           widget.onCommit();
         },
-        child: CustomPaint(painter: _OrientedPainter(widget.image, widget.params, rect), size: Size.infinite),
+        child: CustomPaint(
+          painter: _OrientedPainter(widget.image, widget.params, rect, finished: widget.finished),
+          size: Size.infinite,
+        ),
       );
     },
   );
@@ -840,12 +872,12 @@ class _CropTools extends StatelessWidget {
           child: Row(
             children: [
               IconButton(
-                tooltip: 'Rotate left',
+                tooltip: 'Rotate Left',
                 onPressed: () => _turn(3),
                 icon: const Icon(Icons.rotate_90_degrees_ccw_rounded),
               ),
               IconButton(
-                tooltip: 'Rotate right',
+                tooltip: 'Rotate Right',
                 onPressed: () => _turn(1),
                 icon: const Icon(Icons.rotate_90_degrees_cw_rounded),
               ),
@@ -889,7 +921,7 @@ class _CropTools extends StatelessWidget {
               Expanded(
                 child: Text(
                   feedOk
-                      ? 'Fits an Instagram post'
+                      ? 'Fits An Instagram Post'
                       : 'Too ${aspect < 0.8 ? 'tall' : 'wide'} for an Instagram post (4:5 to 1.91:1). Fine for a story.',
                   style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                 ),

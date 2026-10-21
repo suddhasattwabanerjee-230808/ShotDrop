@@ -36,6 +36,8 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // However the screen is left, keep the username that was typed.
+    if (_handle.text.trim() != _social.handle) _social.save(handle: _handle.text);
     _handle.dispose();
     super.dispose();
   }
@@ -72,7 +74,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     final apps = _apps;
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.firstRun ? 'Welcome to ShotDrop' : 'Instagram & Facebook'),
+        title: Text(widget.firstRun ? 'Welcome To ShotDrop' : 'Instagram & Facebook'),
         automaticallyImplyLeading: !widget.firstRun,
         actions: [
           if (widget.firstRun)
@@ -94,12 +96,12 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
             _Card(
               children: [
                 _AppRow(
-                  name: 'Instagram app',
+                  name: 'Instagram App',
                   installed: apps?.instagram,
                   onInstall: () => _install('com.instagram.android'),
                 ),
                 const Divider(height: 24),
-                const Text('Your username', style: TextStyle(fontWeight: FontWeight.w700)),
+                const Text('Your Username', style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 const Text(
                   'Shown when you publish, so you know which account Instagram will post to. '
@@ -132,7 +134,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
             _Card(
               children: [
                 const Text(
-                  'Post to Facebook automatically',
+                  'Post To Facebook Automatically',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                 ),
                 const SizedBox(height: 6),
@@ -159,7 +161,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   contentPadding: EdgeInsets.zero,
                   value: _social.instagramSharesToFacebook,
                   onChanged: (v) => _social.save(instagramSharesToFacebook: v),
-                  title: const Text("It's on", style: TextStyle(fontWeight: FontWeight.w700)),
+                  title: const Text("It's On", style: TextStyle(fontWeight: FontWeight.w700)),
                   subtitle: const Text(
                     'Otherwise ShotDrop can open Facebook for each post too.',
                     style: TextStyle(fontSize: 12, color: muted),
@@ -167,8 +169,8 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                 ),
                 const Divider(height: 24),
                 _AppRow(
-                  name: 'Facebook app',
-                  subtitle: 'Only needed if Instagram doesn\'t share for you',
+                  name: 'Facebook App',
+                  subtitle: 'Only Needed If Instagram Doesn\'t Share For You',
                   installed: apps?.facebook,
                   onInstall: () => _install('com.facebook.katana'),
                 ),
@@ -211,7 +213,7 @@ class _Hero extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Card → edit → Instagram', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              Text('Card → Edit → Instagram', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               SizedBox(height: 6),
               Text(
                 'Instagram doesn\'t let other apps sign in to personal accounts, so ShotDrop does everything up to the '
