@@ -4,13 +4,14 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'app_screens.dart';
 import 'card_screen.dart';
 import 'editor_screen.dart';
+import 'home_shell.dart';
 import 'viewer_screen.dart';
 
-/// Every shot on the card, newest first, by day. Tap to view, long-press to
-/// start picking several for "Edit before upload".
+/// The Gallery: every shot on the card, newest first, by day. Tap to view,
+/// long-press to pick several, then add them to Selected or edit them
+/// straight into the Upload folder. ♡ marks the ones in Selected.
 class GridScreen extends StatefulWidget {
   const GridScreen({super.key});
 
@@ -23,6 +24,20 @@ class _GridScreenState extends State<GridScreen> {
 
   bool get _selecting => _selected.isNotEmpty;
 
+  // Picking photos: the floating bar makes way for the picking actions.
+  void _syncBar() => HomeShell.hidden.value = _selecting;
+
+  void _clear() {
+    setState(_selected.clear);
+    _syncBar();
+  }
+
+  @override
+  void dispose() {
+    HomeShell.hidden.value = false;
+    super.dispose();
+  }
+
   void _toggle(CardShot s) {
     if (!s.editable) {
       _rawOnly();
@@ -30,6 +45,7 @@ class _GridScreenState extends State<GridScreen> {
     }
     HapticFeedback.selectionClick();
     setState(() => _selected.contains(s.id) ? _selected.remove(s.id) : _selected.add(s.id));
+    _syncBar();
   }
 
   void _toggleDay(List<CardShot> day) {
@@ -38,6 +54,26 @@ class _GridScreenState extends State<GridScreen> {
         if (s.editable) s.id,
     ];
     setState(() => ids.every(_selected.contains) ? _selected.removeAll(ids) : _selected.addAll(ids));
+    _syncBar();
+  }
+
+  Future<void> _addToSelected(List<CardShot> shots) async {
+    final picked = [
+      for (final s in shots)
+        if (_selected.contains(s.id)) s,
+    ];
+    final uploads = AppScope.of(context).uploads;
+    final messenger = ScaffoldMessenger.of(context);
+    _clear();
+    messenger.showSnackBar(
+      SnackBar(
+        duration: const Duration(seconds: 3),
+        persist: false,
+        content: Text(picked.length == 1 ? 'Adding to Selected…' : 'Adding ${picked.length} photos to Selected…'),
+        action: SnackBarAction(label: 'View', onPressed: () => HomeShell.go(context, HomeTab.selected)),
+      ),
+    );
+    await uploads.select(picked);
   }
 
   void _rawOnly() => ScaffoldMessenger.of(context).showSnackBar(
@@ -53,12 +89,14 @@ class _GridScreenState extends State<GridScreen> {
     ];
     final saved = await openEditor(context, picked);
     if (!mounted) return;
-    setState(_selected.clear);
+    _clear();
     if (saved > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           duration: const Duration(seconds: 3),
+          persist: false,
           content: Text(saved == 1 ? 'Added to the Upload folder' : '$saved photos added to the Upload folder'),
+          action: SnackBarAction(label: 'Open', onPressed: () => HomeShell.go(context, HomeTab.upload)),
         ),
       );
     }
@@ -85,12 +123,12 @@ class _GridScreenState extends State<GridScreen> {
     return PopScope(
       canPop: !_selecting,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) setState(_selected.clear);
+        if (!didPop) _clear();
       },
       child: Scaffold(
         appBar: _selecting
             ? AppBar(
-                leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => setState(_selected.clear)),
+                leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: _clear),
                 title: Text('${_selected.length} selected'),
                 backgroundColor: surface,
               )
@@ -98,7 +136,7 @@ class _GridScreenState extends State<GridScreen> {
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Camera card'),
+                    const Text('Gallery'),
                     Text(
                       '${shots.length} shots${rawCount > 0 ? ' · $rawCount with RAW' : ''}',
                       style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
@@ -106,8 +144,7 @@ class _GridScreenState extends State<GridScreen> {
                   ],
                 ),
                 actions: [
-                  const UploadFolderButton(),
-                  const AppMenuButton(cardReady: true),
+                  const CardMenuButton(),
                 ],
               ),
         body: shots.isEmpty
@@ -146,6 +183,7 @@ class _GridScreenState extends State<GridScreen> {
                                 selected: _selected.contains(s.id),
                                 selecting: _selecting,
                                 queued: scope.uploads.contains(s.id),
+                                kept: scope.uploads.isSelected(s.id),
                                 posted: scope.uploads.isPublished(s.id),
                                 onTap: () => _selecting ? _toggle(s) : openViewer(context, shots, shots.indexOf(s)),
                                 onLongPress: () => _toggle(s),
@@ -166,10 +204,24 @@ class _GridScreenState extends State<GridScreen> {
               ? SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                    child: FilledButton.icon(
-                      onPressed: () => _editSelected(shots),
-                      icon: const Icon(Icons.auto_fix_high_rounded),
-                      label: Text('Edit before upload (${_selected.length})'),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _addToSelected(shots),
+                            icon: const Icon(Icons.favorite_border_rounded),
+                            label: const Text('To Selected'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () => _editSelected(shots),
+                            icon: const Icon(Icons.auto_fix_high_rounded),
+                            label: Text('Edit (${_selected.length})'),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 )
@@ -216,13 +268,14 @@ class _Tile extends StatelessWidget {
     required this.selected,
     required this.selecting,
     required this.queued,
+    required this.kept,
     required this.posted,
     required this.onTap,
     required this.onLongPress,
   });
 
   final CardShot shot;
-  final bool selected, selecting, queued, posted;
+  final bool selected, selecting, queued, kept, posted; // kept: in Selected
   final VoidCallback onTap, onLongPress;
 
   @override
@@ -254,6 +307,12 @@ class _Tile extends StatelessWidget {
               left: 6,
               bottom: 6,
               child: PhotoBadge(label: 'READY', icon: Icons.check_rounded, color: positive, fg: Color(0xFF06210F)),
+            )
+          else if (kept)
+            const Positioned(
+              left: 6,
+              bottom: 6,
+              child: PhotoBadge(label: 'SELECTED', icon: Icons.favorite_rounded, color: accent, fg: onAccent),
             )
           else if (posted)
             const Positioned(

@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import '../stores.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'app_screens.dart';
 import 'grid_screen.dart';
-import 'upload_screen.dart';
 
 /// The home screen: the card's photos once it's plugged in, otherwise what to
 /// do to get there. Rechecks the card whenever the app comes back to the front.
@@ -17,39 +15,16 @@ class CardScreen extends StatefulWidget {
 }
 
 class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
-  late final _updater = AppScope.of(context).updater;
-  bool _toldUpdate = false;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _updater.addListener(_onUpdate);
-      _onUpdate();
-    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _updater.removeListener(_onUpdate);
     super.dispose();
-  }
-
-  /// A new version: say so once, with the way to get it.
-  void _onUpdate() {
-    final latest = _updater.latest;
-    if (_toldUpdate || latest == null || !mounted) return;
-    _toldUpdate = true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        duration: const Duration(seconds: 6),
-        persist: false,
-        content: Text('ShotDrop ${latest.version} is out'),
-        action: SnackBarAction(label: 'Update', onPressed: () => showUpdateSheet(context)),
-      ),
-    );
   }
 
   @override
@@ -67,8 +42,8 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
         if (card.state == CardState.ready) return const GridScreen();
         return Scaffold(
           appBar: AppBar(
-            title: const Text('ShotDrop'),
-            actions: const [UploadFolderButton(), AppMenuButton(), SizedBox(width: 4)],
+            title: const Text('Gallery'),
+            actions: const [CardMenuButton(), SizedBox(width: 4)],
           ),
           body: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
@@ -220,29 +195,20 @@ class _PulsingIconState extends State<_PulsingIcon> with SingleTickerProviderSta
   );
 }
 
-/// App-bar button to the Upload folder, with how many photos are waiting.
-class UploadFolderButton extends StatelessWidget {
-  const UploadFolderButton({super.key});
+/// ⋮ on the Gallery: the card's own actions (the rest is in Settings).
+class CardMenuButton extends StatelessWidget {
+  const CardMenuButton({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final uploads = AppScope.of(context).uploads;
-    return ListenableBuilder(
-      listenable: uploads,
-      builder: (context, _) {
-        final n = uploads.queued.length;
-        return IconButton(
-          tooltip: 'Upload folder',
-          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const UploadScreen())),
-          icon: Badge(
-            isLabelVisible: n > 0,
-            label: Text('$n'),
-            backgroundColor: accent,
-            textColor: onAccent,
-            child: const Icon(Icons.outbox_rounded),
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => PopupMenuButton<String>(
+    icon: const Icon(Icons.more_vert_rounded),
+    onSelected: (v) {
+      if (v == 'rescan') AppScope.of(context).card.refresh();
+      if (v == 'folder') pickCardFolder(context);
+    },
+    itemBuilder: (_) => const [
+      PopupMenuItem(value: 'rescan', child: Text('Rescan the card')),
+      PopupMenuItem(value: 'folder', child: Text('Choose another folder')),
+    ],
+  );
 }

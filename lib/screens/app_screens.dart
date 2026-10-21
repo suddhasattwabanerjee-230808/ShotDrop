@@ -5,68 +5,6 @@ import '../app_channel.dart';
 import '../theme.dart';
 import '../update.dart';
 import '../widgets.dart';
-import 'card_screen.dart';
-import 'setup_screen.dart';
-
-/// The ⋮ menu on the home screen: the card, Instagram, the caption helper,
-/// and updating the app (with a dot when a new version is out).
-class AppMenuButton extends StatelessWidget {
-  const AppMenuButton({super.key, this.cardReady = false});
-  final bool cardReady;
-
-  @override
-  Widget build(BuildContext context) {
-    final scope = AppScope.of(context);
-    return ListenableBuilder(
-      listenable: scope.updater,
-      builder: (context, _) {
-        final update = scope.updater.available;
-        return PopupMenuButton<String>(
-          icon: Badge(isLabelVisible: update, backgroundColor: accent, smallSize: 9, child: const Icon(Icons.more_vert_rounded)),
-          onSelected: (v) {
-            switch (v) {
-              case 'rescan':
-                scope.card.refresh();
-              case 'folder':
-                pickCardFolder(context);
-              case 'instagram':
-                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SetupScreen()));
-              case 'caption':
-                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CaptionHelperScreen()));
-              case 'update':
-                showUpdateSheet(context);
-            }
-          },
-          itemBuilder: (_) => [
-            if (cardReady) const PopupMenuItem(value: 'rescan', child: Text('Rescan the card')),
-            const PopupMenuItem(value: 'folder', child: Text('Choose another folder')),
-            const PopupMenuItem(value: 'instagram', child: Text('Instagram & Facebook')),
-            const PopupMenuItem(value: 'caption', child: Text('Caption auto-paste')),
-            PopupMenuItem(
-              value: 'update',
-              child: Row(
-                children: [
-                  const Text('Update app'),
-                  if (update) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(8)),
-                      child: Text(
-                        scope.updater.latest!.version,
-                        style: const TextStyle(color: onAccent, fontSize: 11, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
 
 // --- Update ----------------------------------------------------------------------------
 

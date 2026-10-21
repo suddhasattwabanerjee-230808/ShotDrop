@@ -16,6 +16,7 @@ class AppScope extends InheritedWidget {
     required this.uploads,
     required this.social,
     required this.updater,
+    required this.settings,
     required super.child,
   });
 
@@ -23,6 +24,7 @@ class AppScope extends InheritedWidget {
   final UploadStore uploads;
   final SocialSettings social;
   final Updater updater;
+  final AppSettings settings;
 
   static AppScope of(BuildContext context) => context.getInheritedWidgetOfExactType<AppScope>()!;
 
@@ -31,12 +33,16 @@ class AppScope extends InheritedWidget {
       card != oldWidget.card ||
       uploads != oldWidget.uploads ||
       social != oldWidget.social ||
-      updater != oldWidget.updater;
+      updater != oldWidget.updater ||
+      settings != oldWidget.settings;
 }
 
 /// Card thumbnails asked for once per session; later requests reuse the answer.
 class ThumbCache {
   static final _paths = <String, Future<String?>>{};
+
+  /// Forgets every answer (after the files were cleared from storage).
+  static void clear() => _paths.clear();
 
   static Future<String?> get(CardFile file, {required int maxEdge, bool fast = false}) {
     final key = '${file.docId}|${file.modified}|$maxEdge|$fast';

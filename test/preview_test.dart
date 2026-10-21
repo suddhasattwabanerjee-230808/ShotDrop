@@ -13,7 +13,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shotdrop/main.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/screens/editor_screen.dart';
-import 'package:shotdrop/screens/upload_screen.dart';
 import 'package:shotdrop/screens/viewer_screen.dart';
 import 'package:shotdrop/stores.dart';
 import 'package:shotdrop/update.dart';
@@ -243,7 +242,7 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('preview-root'),
-        child: ShotDropApp(card: card, uploads: uploads, social: social, updater: Updater()),
+        child: ShotDropApp(card: card, uploads: uploads, social: social, updater: Updater(), settings: AppSettings()),
       ),
     );
     await shot(tester, '0_setup');
@@ -252,13 +251,22 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '1_grid');
 
-    // Select a few
+    // Pick a few and keep them in Selected
     await tester.longPress(find.byType(GestureDetector).at(3));
     await tester.pump();
     await tester.tap(find.byType(GestureDetector).at(5));
     await tester.pump(const Duration(milliseconds: 300));
     await shot(tester, '2_grid_selecting');
-    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.tap(find.text('To Selected'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 600)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400)); // the bar slides back in
+    Finder bar(IconData icon) => find.descendant(of: find.byType(BackdropFilter), matching: find.byIcon(icon));
+    await tester.tap(bar(Icons.favorite_border_rounded));
+    await shot(tester, '2b_selected');
+    await tester.tap(bar(Icons.settings_outlined));
+    await shot(tester, '2c_settings');
+    await tester.tap(bar(Icons.photo_library_outlined));
     await tester.pump(const Duration(milliseconds: 300));
 
     final nav = tester.state<NavigatorState>(find.byType(Navigator));
@@ -304,7 +312,9 @@ void main() {
     expect(find.byType(EditorScreen), findsNothing);
     await shot(tester, '7_after_done_viewer');
 
-    nav.push(MaterialPageRoute<void>(builder: (_) => const UploadScreen()));
+    nav.pop(); // the viewer, back to the Gallery
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(bar(Icons.outbox_outlined));
     await shot(tester, '8_upload_folder');
 
     await tester.enterText(find.byType(TextField), 'Golden hour at the Rann of Kutch #nikon #d5600');

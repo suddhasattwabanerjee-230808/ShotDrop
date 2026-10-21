@@ -9,11 +9,12 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
 import 'publish_screen.dart';
-import 'setup_screen.dart';
+import 'home_shell.dart';
 
-/// The Upload folder: edited photos in posting order (drag to reorder, swipe
-/// to remove, tap or Edit to edit again), the caption, and the way out to
-/// Instagram. Only the ticked photos are published; the rest stay for later.
+/// The Upload folder (a tab): edited photos going out next, in posting order
+/// (drag to reorder, swipe back to Selected, tap or Edit to edit again), the
+/// caption, and the way out to Instagram. Only the ticked photos are
+/// published; once some are posted, the rest go back to Selected for later.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
 
@@ -40,19 +41,19 @@ class _UploadScreenState extends State<UploadScreen> {
     super.dispose();
   }
 
-  Future<void> _remove(UploadItem item) async {
+  /// Swiped away: back to Selected (with its edit), not deleted.
+  Future<void> _setAside(UploadItem item) async {
     final uploads = AppScope.of(context).uploads;
     final messenger = ScaffoldMessenger.of(context);
-    await uploads.remove(item.shotId);
+    await uploads.move([item.shotId], ItemStatus.selected);
     messenger.hideCurrentSnackBar();
-    final controller = messenger.showSnackBar(
+    messenger.showSnackBar(
       SnackBar(
-        content: Text('${item.name} removed from the Upload folder'),
+        content: Text('${item.name} moved to Selected'),
         persist: false,
         action: SnackBarAction(label: 'Undo', onPressed: () => uploads.put(item)),
       ),
     );
-    controller.closed.then((_) => uploads.purge(item));
   }
 
   Future<void> _reEdit(UploadItem item) async {
@@ -68,28 +69,28 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Upload folder'),
-        actions: [
-          IconButton(
-            tooltip: 'Instagram & Facebook',
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SetupScreen())),
-            icon: const Icon(Icons.manage_accounts_rounded),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Upload folder')),
       body: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
           final items = uploads.queued;
           if (items.isEmpty) {
-            return const StatePanel(
-              icon: Icons.outbox_rounded,
-              title: 'Nothing to post yet',
-              body:
-                  'Open a photo from the card and tap "Edit before upload". '
-                  'Edited photos land here, ready for Instagram.',
+            return Padding(
+              padding: const EdgeInsets.only(bottom: navBarClearance),
+              child: StatePanel(
+                icon: Icons.outbox_rounded,
+                title: 'Nothing to post yet',
+                body:
+                    'Edit a photo from the Gallery or from Selected and it lands here, ready for Instagram. '
+                    'Swipe one away to set it aside in Selected.',
+                actions: [
+                  OutlinedButton.icon(
+                    onPressed: () => HomeShell.go(context, HomeTab.selected),
+                    icon: const Icon(Icons.favorite_border_rounded),
+                    label: const Text('Open Selected'),
+                  ),
+                ],
+              ),
             );
           }
           final picked = _picked.length;
@@ -127,13 +128,20 @@ class _UploadScreenState extends State<UploadScreen> {
                     return Dismissible(
                       key: ValueKey(item.shotId),
                       direction: DismissDirection.endToStart,
-                      onDismissed: (_) => _remove(item),
+                      onDismissed: (_) => _setAside(item),
                       background: Container(
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 24),
                         margin: const EdgeInsets.symmetric(vertical: 4),
-                        decoration: BoxDecoration(color: negative, borderRadius: BorderRadius.circular(18)),
-                        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+                        decoration: BoxDecoration(color: surfaceHigh, borderRadius: BorderRadius.circular(18)),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('To Selected', style: TextStyle(color: accent, fontWeight: FontWeight.w800)),
+                            SizedBox(width: 8),
+                            Icon(Icons.favorite_rounded, color: accent),
+                          ],
+                        ),
                       ),
                       child: _UploadRow(
                         index: i,
@@ -193,7 +201,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        '$left unticked ${left == 1 ? 'photo stays' : 'photos stay'} here for later',
+                        '$left unticked ${left == 1 ? 'photo goes' : 'photos go'} back to Selected once you\'ve posted',
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                       ),
@@ -284,7 +292,7 @@ class _UploadRow extends StatelessWidget {
                   width: 72,
                   height: 72,
                   child: Image.file(
-                    File(item.exportPath),
+                    File(item.previewPath),
                     fit: BoxFit.cover,
                     cacheWidth: 216,
                     errorBuilder: (_, _, _) => const ColoredBox(color: surfaceHigh),

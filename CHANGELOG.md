@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0] - 2026-10-22 (build 6)
+
+Four tabs, and a shortlist.
+
+- A rounded bar floats at the bottom: **Gallery** (the card), **Selected**, **Upload** and **Settings**. Counts show on Selected and Upload; a dot on Settings when there's an update.
+- **Selected** is your shortlist. Tap ♡ on a photo in the viewer, or long-press a few in the Gallery and tap "To Selected". ShotDrop copies them off the card, so they're there with the card unplugged. Tap one to edit it into the Upload folder.
+- Photos in the Upload folder that you don't post go back to Selected afterwards, edits and all, ready for next time. Swiping one away in the Upload folder sets it aside in Selected too.
+- **Settings**: your Instagram account and caption auto-paste; the card folder; start portrait photos at 4:5; saved size (2160 or 1080 px); copy edits to the gallery; what Publish starts on; space used, and clearing posted copies and thumbnails; updates.
+
 ## [0.4.1] - 2026-10-22 (build 5)
 
 A much smaller download.

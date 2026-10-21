@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../theme.dart';
@@ -155,6 +156,8 @@ class _ViewerScreenState extends State<ViewerScreen> {
                             '${_index + 1} / ${widget.shots.length}',
                             style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xCCFFFFFF)),
                           ),
+                          const SizedBox(width: 4),
+                          _HeartButton(shot: _shot),
                         ],
                       ),
                     ),
@@ -299,4 +302,51 @@ class _ZoomablePhotoState extends State<_ZoomablePhoto> with SingleTickerProvide
       ),
     ),
   );
+}
+
+/// ♡ on the photo on screen: keeps it in Selected (copied off the card) to
+/// edit and post later; tap again to take it out.
+class _HeartButton extends StatelessWidget {
+  const _HeartButton({required this.shot});
+  final CardShot shot;
+
+  @override
+  Widget build(BuildContext context) {
+    final uploads = AppScope.of(context).uploads;
+    return ListenableBuilder(
+      listenable: uploads,
+      builder: (context, _) {
+        final kept = uploads.isSelected(shot.id), queued = uploads.contains(shot.id);
+        return IconButton(
+          tooltip: kept ? 'Remove from Selected' : 'Add to Selected',
+          onPressed: shot.jpg == null
+              ? null
+              : () async {
+                  HapticFeedback.lightImpact();
+                  final messenger = ScaffoldMessenger.of(context);
+                  if (queued) {
+                    messenger.showSnackBar(
+                      const SnackBar(duration: Duration(seconds: 3), content: Text('It\'s in the Upload folder already')),
+                    );
+                  } else if (kept) {
+                    final item = await uploads.remove(shot.id);
+                    if (item != null && !item.edited) uploads.purge(item);
+                  } else {
+                    await uploads.select([shot]);
+                  }
+                },
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            transitionBuilder: (c, a) => ScaleTransition(scale: CurvedAnimation(parent: a, curve: Curves.elasticOut), child: c),
+            child: Icon(
+              kept || queued ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              key: ValueKey(kept || queued),
+              color: kept || queued ? accent : Colors.white,
+              size: 26,
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

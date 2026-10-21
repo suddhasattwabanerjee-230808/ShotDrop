@@ -234,34 +234,47 @@ class EditParams {
 }
 
 /// A photo sitting in the Upload folder, edited and waiting to be posted.
+/// Where a photo kept by ShotDrop is: in Selected (picked from the card,
+/// or set aside from the Upload folder for later), in the Upload folder
+/// (edited, going out next), or posted.
+enum ItemStatus { selected, queued, published }
+
+/// A photo ShotDrop keeps: its own copy of the card JPEG, and once edited,
+/// the edit and the export that gets posted.
 class UploadItem {
   const UploadItem({
     required this.shotId,
     required this.name,
     required this.taken,
     required this.sourcePath,
-    required this.exportPath,
-    required this.params,
+    this.exportPath,
+    this.params = const EditParams(),
     this.galleryUri,
-    this.published = false,
+    this.status = ItemStatus.queued,
     this.width,
     this.height,
   });
 
-  final String shotId; // CardShot.id, so the grid can tick it
+  final String shotId; // CardShot.id, so the grid can mark it
   final String name; // DSC_0123
   final DateTime taken;
   final String sourcePath; // upright, untouched copy of the card JPEG
-  final String exportPath; // the edited JPEG that gets posted
+  final String? exportPath; // the edited JPEG that gets posted; null until it's edited
   final EditParams params;
   final String? galleryUri; // its copy in Pictures/ShotDrop/Upload
-  final bool published;
+  final ItemStatus status;
   final int? width, height; // of the export, in pixels
+
+  bool get published => status == ItemStatus.published;
+  bool get edited => exportPath != null;
+
+  /// What to show for it: the edit if there is one, else the original.
+  String get previewPath => exportPath ?? sourcePath;
 
   /// Width / height of the export, if known.
   double? get aspect => width != null && height != null && height! > 0 ? width! / height! : null;
 
-  UploadItem copyWith({String? exportPath, EditParams? params, String? galleryUri, bool? published}) => UploadItem(
+  UploadItem copyWith({String? exportPath, EditParams? params, String? galleryUri, ItemStatus? status}) => UploadItem(
     shotId: shotId,
     name: name,
     taken: taken,
@@ -269,7 +282,7 @@ class UploadItem {
     exportPath: exportPath ?? this.exportPath,
     params: params ?? this.params,
     galleryUri: galleryUri ?? this.galleryUri,
-    published: published ?? this.published,
+    status: status ?? this.status,
     width: width,
     height: height,
   );
@@ -282,7 +295,7 @@ class UploadItem {
     'exportPath': exportPath,
     'params': params.toJson(),
     'galleryUri': galleryUri,
-    'published': published,
+    'status': status.name,
     'width': width,
     'height': height,
   };
@@ -292,10 +305,13 @@ class UploadItem {
     name: j['name'] as String,
     taken: DateTime.fromMillisecondsSinceEpoch((j['taken'] as num).toInt()),
     sourcePath: j['sourcePath'] as String,
-    exportPath: j['exportPath'] as String,
+    exportPath: j['exportPath'] as String?,
     params: EditParams.fromJson((j['params'] as Map).cast<String, Object?>()),
     galleryUri: j['galleryUri'] as String?,
-    published: j['published'] == true,
+    // Before 0.5.0 there was only "published" (everything else was in the Upload folder).
+    status:
+        ItemStatus.values.asNameMap()[j['status']] ??
+        (j['published'] == true ? ItemStatus.published : ItemStatus.queued),
     width: (j['width'] as num?)?.toInt(),
     height: (j['height'] as num?)?.toInt(),
   );

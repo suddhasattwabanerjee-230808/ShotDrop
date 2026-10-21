@@ -13,6 +13,7 @@ import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../pose_channel.dart';
+import '../stores.dart';
 import '../widgets.dart';
 import 'body_tools.dart';
 
@@ -121,7 +122,9 @@ class _EditorScreenState extends State<EditorScreen> {
       final image = await _decode(path, maxEdge: _previewEdge);
       if (!mounted || target != _target) return image.dispose();
       final o = Size(image.width.toDouble(), image.height.toDouble());
-      final params = target.existing?.params ?? _defaultsFor(o);
+      // A photo from Selected that was never edited starts like a fresh one from the card.
+      final existing = target.existing;
+      final params = existing != null && existing.edited ? existing.params : _defaultsFor(o, AppScope.of(context).settings);
       setState(() {
         _preview?.dispose();
         _preview = image;
@@ -139,8 +142,8 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   /// Portrait shots are taller than Instagram allows (2:3 vs 4:5), so they start at 4:5.
-  static EditParams _defaultsFor(Size photo) {
-    if (photo.width / photo.height < 0.8) {
+  static EditParams _defaultsFor(Size photo, AppSettings settings) {
+    if (settings.portraitAt45 && photo.width / photo.height < 0.8) {
       return EditParams(aspect: AspectPreset.portrait, crop: centeredCrop(photo, 0.8));
     }
     return const EditParams();
@@ -170,6 +173,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (source == null || _status != null) return;
     final target = _target;
     final uploads = AppScope.of(context).uploads;
+    final settings = AppScope.of(context).settings;
     final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _status = 'Saving to the Upload folder…';
@@ -180,7 +184,7 @@ class _EditorScreenState extends State<EditorScreen> {
     });
     try {
       final full = await _decode(source);
-      final out = await renderFinal(full, _p);
+      final out = await renderFinal(full, _p, maxEdge: settings.saveEdge);
       full.dispose();
       final bytes = await out.toByteData(format: ui.ImageByteFormat.rawRgba);
       final exportPath = await uploads.exportPathFor(target.shotId);
@@ -189,12 +193,14 @@ class _EditorScreenState extends State<EditorScreen> {
       out.dispose();
 
       String? galleryUri;
-      try {
-        galleryUri = await CardChannel.instance.saveToGallery(exportPath, '${target.name}_edit');
-        final old = target.existing?.galleryUri;
-        if (old != null) CardChannel.instance.deleteFromGallery(old).catchError((Object _) {});
-      } catch (_) {
-        // The gallery copy is a convenience; the Upload folder works without it.
+      final oldCopy = target.existing?.galleryUri;
+      if (oldCopy != null) CardChannel.instance.deleteFromGallery(oldCopy).catchError((Object _) {});
+      if (settings.galleryCopy) {
+        try {
+          galleryUri = await CardChannel.instance.saveToGallery(exportPath, '${target.name}_edit');
+        } catch (_) {
+          // The gallery copy is a convenience; the Upload folder works without it.
+        }
       }
       await uploads.put(
         UploadItem(

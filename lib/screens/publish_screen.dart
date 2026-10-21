@@ -57,7 +57,7 @@ class _PublishSheet extends StatefulWidget {
 }
 
 class _PublishSheetState extends State<_PublishSheet> {
-  var _mode = PublishMode.post;
+  late var _mode = PublishMode.values.asNameMap()[widget.scope.settings.publishMode] ?? PublishMode.post;
   late bool _facebook = widget.apps.facebook && !widget.scope.social.instagramSharesToFacebook;
 
   int get _n => widget.items.length;
@@ -281,7 +281,7 @@ class _PublishScreenState extends State<PublishScreen> {
   @override
   void dispose() {
     final ids = _postedIds;
-    if (ids.isNotEmpty) _uploads.markPublished(ids);
+    _uploads.finishPublishing(ids);
     super.dispose();
   }
 
@@ -294,7 +294,7 @@ class _PublishScreenState extends State<PublishScreen> {
         setState(() => _busy = 'Getting the story ready…');
         paths = [await _storyFile(step.items.single)];
       } else {
-        paths = [for (final i in step.items) i.exportPath];
+        paths = [for (final i in step.items) i.previewPath];
       }
       // An Instagram post gets the caption typed in by the helper when it's on; otherwise it's copied for pasting.
       final caption = step.kind == StepKind.instagramStory ? '' : _uploads.caption.trim();
@@ -331,9 +331,9 @@ class _PublishScreenState extends State<PublishScreen> {
 
   /// The story version of [item]: 9:16 over a blurred copy of itself. Made once, then reused.
   Future<String> _storyFile(UploadItem item) async {
-    final path = item.exportPath.replaceFirst(RegExp(r'\.jpg$'), '-story.jpg');
+    final path = item.previewPath.replaceFirst(RegExp(r'\.jpg$'), '-story.jpg');
     if (await File(path).exists()) return path;
-    final buffer = await ui.ImmutableBuffer.fromUint8List(await File(item.exportPath).readAsBytes());
+    final buffer = await ui.ImmutableBuffer.fromUint8List(await File(item.previewPath).readAsBytes());
     final descriptor = await ui.ImageDescriptor.encoded(buffer);
     final frame = await (await descriptor.instantiateCodec()).getNextFrame();
     final story = await renderStory(frame.image);
@@ -649,7 +649,7 @@ class _Thumbs extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       Image.file(
-                        File(item.exportPath),
+                        File(item.previewPath),
                         fit: BoxFit.cover,
                         cacheWidth: 200,
                         errorBuilder: (_, _, _) => const ColoredBox(color: surfaceHigh),

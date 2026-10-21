@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'screens/card_screen.dart';
+import 'screens/home_shell.dart';
 import 'screens/setup_screen.dart';
 import 'stores.dart';
 import 'theme.dart';
@@ -15,10 +15,12 @@ Future<void> main() async {
   final uploads = UploadStore();
   final social = SocialSettings();
   final updater = Updater();
-  await Future.wait([uploads.load(), social.load()]);
+  final settings = AppSettings();
+  await Future.wait([uploads.load(), social.load(), settings.load()]);
   card.load();
-  updater.check(); // in the background: a dot on the menu if there's a new version
-  runApp(ShotDropApp(card: card, uploads: uploads, social: social, updater: updater));
+  // In the background: a dot on Settings if there's a new version.
+  if (settings.checkUpdates) updater.check();
+  runApp(ShotDropApp(card: card, uploads: uploads, social: social, updater: updater, settings: settings));
 }
 
 class ShotDropApp extends StatelessWidget {
@@ -28,12 +30,14 @@ class ShotDropApp extends StatelessWidget {
     required this.uploads,
     required this.social,
     required this.updater,
+    required this.settings,
   });
 
   final CardStore card;
   final UploadStore uploads;
   final SocialSettings social;
   final Updater updater;
+  final AppSettings settings;
 
   @override
   Widget build(BuildContext context) => AppScope(
@@ -41,12 +45,13 @@ class ShotDropApp extends StatelessWidget {
     uploads: uploads,
     social: social,
     updater: updater,
+    settings: settings,
     child: MaterialApp(
       title: 'ShotDrop',
       debugShowCheckedModeBanner: false,
       theme: appThemeData(),
       // The Instagram setup comes first, on the first launch only; after that the card's photos.
-      home: social.setupSeen ? const CardScreen() : const SetupScreen(firstRun: true),
+      home: social.setupSeen ? const HomeShell() : const SetupScreen(firstRun: true),
     ),
   );
 }

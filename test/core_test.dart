@@ -455,31 +455,51 @@ void main() {
       expect(b.byShot('C')!.params.filter, 'mono');
     });
 
-    test('published photos leave the queue, and the caption clears with the last one', () async {
+    test('after publishing, posted photos are marked and the rest go back to Selected', () async {
       final s = UploadStore(dir: dir);
       await s.put(item('A'));
       await s.put(item('B'));
       await s.setCaption('hi');
-      await s.markPublished(['A']);
-      expect(s.queued.map((i) => i.shotId), ['B']);
-      expect(s.isPublished('A'), isTrue);
-      expect(s.contains('A'), isFalse);
+      await s.finishPublishing([]); // nothing posted: nothing moves
+      expect(s.queued.map((i) => i.shotId), ['A', 'B']);
       expect(s.caption, 'hi');
-      await s.markPublished(['B']);
+      await s.finishPublishing(['A']);
+      expect(s.isPublished('A'), isTrue);
       expect(s.queued, isEmpty);
+      expect(s.isSelected('B'), isTrue);
+      expect(s.byShot('B')!.edited, isTrue); // keeps its edit for later
       expect(s.caption, '');
+    });
+
+    test('editing a Selected photo moves it to the end of the Upload folder', () async {
+      final s = UploadStore(dir: dir);
+      await s.put(item('A'));
+      await s.put(item('B').copyWith(status: ItemStatus.selected));
+      expect(s.selected.map((i) => i.shotId), ['B']);
+      await s.put(item('B'));
+      expect(s.queued.map((i) => i.shotId), ['A', 'B']);
+      expect(s.selected, isEmpty);
+      await s.move(['A'], ItemStatus.selected);
+      expect(s.queued.map((i) => i.shotId), ['B']);
+      expect(s.isSelected('A'), isTrue);
+    });
+
+    test('0.4 files load: published or in the Upload folder', () {
+      final old = {..._item('A').toJson()..remove('status'), 'published': true};
+      expect(UploadItem.fromJson(old).status, ItemStatus.published);
+      expect(UploadItem.fromJson({...old, 'published': false}).status, ItemStatus.queued);
     });
 
     test('re-editing replaces the item in place and deletes the old export', () async {
       final s = UploadStore(dir: dir);
       final first = item('A');
-      File(first.exportPath).writeAsStringSync('old');
+      File(first.exportPath!).writeAsStringSync('old');
       await s.put(first);
       await s.put(first.copyWith(exportPath: '${dir.path}/e_A2.jpg'));
       expect(s.items, hasLength(1));
       expect(s.items.single.exportPath, endsWith('e_A2.jpg'));
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(File(first.exportPath).existsSync(), isFalse);
+      expect(File(first.exportPath!).existsSync(), isFalse);
     });
   });
 }

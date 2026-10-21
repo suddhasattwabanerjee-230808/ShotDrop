@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../share_channel.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'card_screen.dart';
+import 'home_shell.dart';
 
 /// Instagram & Facebook: shown once on first launch, and from the Upload folder.
 ///
@@ -59,7 +59,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
     await _social.save(handle: _handle.text, setupSeen: true);
     if (!mounted) return;
     if (widget.firstRun) {
-      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const CardScreen()));
+      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const HomeShell()));
     } else {
       Navigator.of(context).pop();
     }
