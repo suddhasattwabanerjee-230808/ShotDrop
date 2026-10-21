@@ -21,8 +21,24 @@ jobs:
 
       - run: flutter pub get
       - run: flutter test
+
+      # The release certificate lives in repo secrets, never in git. Stop here
+      # rather than ship a debug-signed APK that can't update the installed one.
+      - name: Restore the release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.SHOTDROP_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.SHOTDROP_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::Set the SHOTDROP_KEYSTORE_B64 and SHOTDROP_KEYSTORE_PASSWORD repo secrets first."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/app/release.keystore
+
       # arm64 only: every phone this will be installed on is 64-bit.
       - run: flutter build apk --release --target-platform android-arm64
+        env:
+          SHOTDROP_KEYSTORE_PASSWORD: ${{ secrets.SHOTDROP_KEYSTORE_PASSWORD }}
 
       - name: Extract changelog section for this tag
         run: |

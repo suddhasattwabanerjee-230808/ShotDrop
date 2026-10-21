@@ -15,7 +15,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.bittu.shotdrop"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -30,11 +29,33 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release certificate: CI writes app/release.keystore from the
+    // SHOTDROP_KEYSTORE_B64 secret and passes its password in
+    // SHOTDROP_KEYSTORE_PASSWORD; it's never committed (backup:
+    // /root/.shotdrop-signing on the phone). One fixed certificate is what lets
+    // each release install over the last. SHA-1:
+    //   0A:A7:3D:04:10:AD:CF:12:67:63:DD:83:7E:B5:AC:B7:E0:7B:F4:9B
+    // Without the keystore (local builds) release falls back to debug signing.
+    val releaseKeystore = file("release.keystore")
+    val releasePassword = System.getenv("SHOTDROP_KEYSTORE_PASSWORD")
+    val canSignRelease = releaseKeystore.exists() && !releasePassword.isNullOrEmpty()
+
+    signingConfigs {
+        if (canSignRelease) {
+            create("release") {
+                storeFile = releaseKeystore
+                storeType = "PKCS12"
+                storePassword = releasePassword
+                keyAlias = "shotdrop"
+                keyPassword = releasePassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (canSignRelease) "release" else "debug")
+            ndk { abiFilters.add("arm64-v8a") }
         }
     }
 }
