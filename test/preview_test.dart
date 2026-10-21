@@ -1,0 +1,228 @@
+// Renders the main screens to PNGs with fake card data, for eyeballing the UI
+// on a machine without an Android device:
+//   flutter test test/preview_test.dart --dart-define=PREVIEW_DIR=/some/dir
+// Skipped unless PREVIEW_DIR is set.
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shotdrop/main.dart';
+import 'package:shotdrop/models.dart';
+import 'package:shotdrop/screens/editor_screen.dart';
+import 'package:shotdrop/screens/upload_screen.dart';
+import 'package:shotdrop/screens/viewer_screen.dart';
+import 'package:shotdrop/stores.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+
+const outDir = String.fromEnvironment('PREVIEW_DIR');
+
+Future<void> _loadFonts() async {
+  final manrope = FontLoader('Manrope');
+  for (final w in [400, 500, 600, 700, 800]) {
+    manrope.addFont(rootBundle.load('assets/fonts/Manrope-$w.ttf'));
+  }
+  await manrope.load();
+  final icons = FontLoader('MaterialIcons')
+    ..addFont(
+      Future.value(
+        ByteData.sublistView(
+          File('/root/flutter/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf').readAsBytesSync(),
+        ),
+      ),
+    );
+  await icons.load();
+}
+
+/// A fake "photo": a sky-to-ground gradient with a figure in the middle.
+Future<void> _writePhoto(String path, int w, int h, int seed) async {
+  final r = ui.PictureRecorder();
+  final c = Canvas(r);
+  final rnd = math.Random(seed);
+  final hue = rnd.nextDouble() * 360;
+  final sky = HSVColor.fromAHSV(1, hue, 0.45, 0.95).toColor();
+  final ground = HSVColor.fromAHSV(1, (hue + 40) % 360, 0.6, 0.35).toColor();
+  final rect = Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble());
+  c.drawRect(rect, Paint()..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, [sky, ground]));
+  c.drawCircle(
+    Offset(w * (0.2 + rnd.nextDouble() * 0.6), h * 0.25),
+    w * 0.08,
+    Paint()..color = const Color(0xFFFFF2C4),
+  );
+  final body = Paint()..color = const Color(0xFF1B1B22);
+  c.drawCircle(Offset(w * 0.5, h * 0.42), w * 0.05, body);
+  c.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromCenter(center: Offset(w * 0.5, h * 0.62), width: w * 0.14, height: h * 0.3),
+      Radius.circular(w * 0.03),
+    ),
+    body,
+  );
+  final img = await r.endRecording().toImage(w, h);
+  final png = await img.toByteData(format: ui.ImageByteFormat.png);
+  File(path)
+    ..parent.createSync(recursive: true)
+    ..writeAsBytesSync(png!.buffer.asUint8List());
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  if (outDir.isEmpty) {
+    test('screen previews (set PREVIEW_DIR to render)', () {}, skip: true);
+    return;
+  }
+
+  late Directory tmp;
+  late List<CardFile> files;
+
+  setUpAll(() async {
+    SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.withData({
+      'shotdrop.card_folder.v1': 'content://tree/DCIM',
+    });
+    tmp = Directory.systemTemp.createTempSync('shotdrop_preview');
+    files = [];
+    final base = DateTime(2026, 10, 21, 18, 40).millisecondsSinceEpoch;
+    for (var i = 0; i < 14; i++) {
+      final name = 'DSC_${(412 - i).toString().padLeft(4, '0')}';
+      final portrait = i % 3 == 1;
+      final modified = base - i * 1000 * 60 * (i < 8 ? 7 : 400);
+      final path = '${tmp.path}/card/$name.png';
+      files.add(
+        CardFile(uri: path, docId: 'X:DCIM/100D5600/$name.JPG', name: '$name.JPG', size: 9800000, modified: modified),
+      );
+      if (i % 2 == 0) {
+        files.add(
+          CardFile(
+            uri: path,
+            docId: 'X:DCIM/100D5600/$name.NEF',
+            name: '$name.NEF',
+            size: 24800000,
+            modified: modified,
+          ),
+        );
+      }
+      // Written inside runAsync in the test, where real async work can run.
+      _pending.add((path, portrait ? 400 : 600, portrait ? 600 : 400, i));
+    }
+  });
+
+  Future<void> shot(WidgetTester tester, String name) async {
+    await tester.runAsync(() async {
+      // Let file images decode, then settle.
+      for (var i = 0; i < 6; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(const ValueKey('preview-root')));
+      final image = await boundary.toImage(pixelRatio: 1.25);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      File('$outDir/$name.png')
+        ..parent.createSync(recursive: true)
+        ..writeAsBytesSync(png!.buffer.asUint8List());
+    });
+  }
+
+  testWidgets('screens', (tester) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('shotdrop/card'),
+      (call) async {
+        final a = (call.arguments as Map?) ?? const {};
+        switch (call.method) {
+          case 'access':
+            return 'ok';
+          case 'list':
+            return [
+              for (final f in files)
+                {'uri': f.uri, 'docId': f.docId, 'name': f.name, 'size': f.size, 'modified': f.modified},
+            ];
+          case 'thumbnail':
+            return a['uri'];
+          case 'importSource':
+            File(a['dest'] as String).parent.createSync(recursive: true);
+            File(a['uri'] as String).copySync(a['dest'] as String);
+            return null;
+          case 'encodeJpeg':
+            final buffer = await ui.ImmutableBuffer.fromUint8List(a['rgba'] as Uint8List);
+            final d = ui.ImageDescriptor.raw(
+              buffer,
+              width: a['width'] as int,
+              height: a['height'] as int,
+              pixelFormat: ui.PixelFormat.rgba8888,
+            );
+            final frame = await (await d.instantiateCodec()).getNextFrame();
+            final png = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+            File(a['dest'] as String)
+              ..parent.createSync(recursive: true)
+              ..writeAsBytesSync(png!.buffer.asUint8List());
+            return null;
+          case 'saveToGallery':
+            return 'content://media/1';
+        }
+        return null;
+      },
+    );
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockStreamHandler(
+      const EventChannel('shotdrop/card/events'),
+      MockStreamHandler.inline(onListen: (_, _) {}),
+    );
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.75;
+    late CardStore card;
+    late UploadStore uploads;
+    await tester.runAsync(() async {
+      await _loadFonts();
+      for (final (path, w, h, seed) in _pending) {
+        await _writePhoto(path, w, h, seed);
+      }
+      card = CardStore();
+      uploads = UploadStore(dir: Directory('${tmp.path}/app'));
+      await card.load();
+    });
+
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: const ValueKey('preview-root'),
+        child: ShotDropApp(card: card, uploads: uploads),
+      ),
+    );
+    await shot(tester, '1_grid');
+
+    // Select a few
+    await tester.longPress(find.byType(GestureDetector).at(3));
+    await tester.pump();
+    await tester.tap(find.byType(GestureDetector).at(5));
+    await tester.pump(const Duration(milliseconds: 300));
+    await shot(tester, '2_grid_selecting');
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final nav = tester.state<NavigatorState>(find.byType(Navigator));
+    nav.push(MaterialPageRoute<void>(builder: (_) => ViewerScreen(shots: card.shots, initialIndex: 1)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '3_viewer');
+
+    nav.push(MaterialPageRoute<void>(builder: (_) => EditorScreen(targets: [EditTarget.fromShot(card.shots[1])])));
+    await shot(tester, '4_editor_crop');
+
+    await tester.tap(find.text('Body'));
+    await shot(tester, '5_editor_body');
+    await tester.drag(find.byType(Slider).at(0), const Offset(110, 0)); // taller
+    await tester.drag(find.byType(Slider).at(1), const Offset(-110, 0)); // thinner
+    await shot(tester, '5b_editor_body_reshaped');
+
+    await tester.tap(find.text('Adjust'));
+    await shot(tester, '6_editor_adjust');
+
+    await tester.tap(find.text('Done'));
+    await shot(tester, '7_after_done_viewer');
+
+    nav.push(MaterialPageRoute<void>(builder: (_) => const UploadScreen()));
+    await shot(tester, '8_upload_folder');
+  });
+}
+
+final _pending = <(String, int, int, int)>[];
