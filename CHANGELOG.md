@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0+1] - 2026-10-21
+## [0.1.0] - 2026-10-21 (build 1)
 
 First build: card to Upload folder.
 
