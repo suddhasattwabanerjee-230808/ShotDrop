@@ -637,8 +637,8 @@ class _ImagePainter extends CustomPainter {
 
 /// The crop view: the whole photo (rotated, straightened, coloured) at
 /// [photo] on screen, the frame over it, and outside the frame dimmed by
-/// [dim] (all but hidden at rest; see-through while moving, to show what
-/// could come in).
+/// [dim] (hidden at rest, so what shows is the cropped photo; a glimpse
+/// while moving, to show what could come in).
 class _CropPainter extends CustomPainter {
   _CropPainter(this.image, this.params, this.photo, this.frame, this.dim, {this.finished, this.guides = false});
   final ui.Image image;
@@ -895,7 +895,8 @@ class _CropStageState extends State<_CropStage> with SingleTickerProviderStateMi
           builder: (context, _) {
             final layout = _shown = _layoutFor(size);
             return TweenAnimationBuilder<double>(
-              tween: Tween(end: _active ? 0.55 : 0.9),
+              // At rest only the cropped photo shows; while moving, a glimpse of what could come in.
+              tween: Tween(end: _active ? 0.8 : 1.0),
               duration: const Duration(milliseconds: 220),
               builder: (context, dim, _) => CustomPaint(
                 painter: _CropPainter(

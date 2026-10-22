@@ -566,8 +566,7 @@ class _PublishScreenState extends State<PublishScreen> {
                       const SizedBox(height: 8),
                       Text(
                         'Tap Yes once ${story ? 'the story is up' : 'you\'ve tapped ${step.kind == StepKind.facebookPost ? 'Post' : 'Share'}'} '
-                        'in $appName. If $appName opened without the ${step.items.length == 1 ? 'photo' : 'photos'}, '
-                        'tap Open It In $appName.',
+                        'in $appName, or Do It Later to keep ${step.items.length == 1 ? 'it' : 'them'} in the Upload folder.',
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 13, color: muted, height: 1.45),
                       ),
@@ -603,11 +602,6 @@ class _PublishScreenState extends State<PublishScreen> {
                 label: Text(next == null ? 'Yes, It\'s Posted' : 'Yes, Open The Next One'),
               ),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _open,
-                icon: const Icon(Icons.open_in_new_rounded),
-                label: Text('Open It In $appName'),
-              ),
               TextButton(onPressed: _later, child: const Text('Do It Later')),
             ],
           ],

@@ -48,12 +48,18 @@ Future<Prefs> prefs() => Prefs.load();
 
 enum CardState { noFolder, waiting, newCard, loading, ready, error }
 
+/// Where a gallery grid's photos come from: the camera card or the phone.
+abstract class ShotSource implements Listenable {
+  List<CardShot> get shots;
+  Future<void> refresh();
+}
+
 /// The camera card: which folder was picked, whether it's plugged in, and the
 /// shots on it. Rescans by itself when a card is plugged in or pulled out
 /// (and every few seconds while waiting for one, in case the phone doesn't
 /// say). A card picked before opens by itself; a new one asks once, with the
 /// picker already on its DCIM folder.
-class CardStore extends ChangeNotifier {
+class CardStore extends ChangeNotifier implements ShotSource {
   CardStore({CardChannel? channel}) : _channel = channel ?? CardChannel.instance;
 
   final CardChannel _channel;
@@ -61,6 +67,7 @@ class CardStore extends ChangeNotifier {
 
   String? folder;
   CardState state = CardState.noFolder;
+  @override
   List<CardShot> shots = const [];
   String? error;
   String? cardName; // the plugged-in card, while it's waiting to be opened (newCard)
@@ -103,6 +110,7 @@ class CardStore extends ChangeNotifier {
     await (await prefs()).setString(_folderKey, f);
   }
 
+  @override
   Future<void> refresh() async {
     if (_refreshing) {
       _again = true;
@@ -170,6 +178,66 @@ class CardStore extends ChangeNotifier {
     _volumes?.cancel();
     _poll?.cancel();
     super.dispose();
+  }
+}
+
+enum PhoneState { unknown, noAccess, blocked, loading, ready, error }
+
+/// The Phone Gallery: every photo in the phone's own gallery, newest first.
+/// Nothing is read (and Android doesn't ask for access) until it's opened.
+class PhoneStore extends ChangeNotifier implements ShotSource {
+  PhoneStore({CardChannel? channel}) : _channel = channel ?? CardChannel.instance;
+
+  final CardChannel _channel;
+  PhoneState state = PhoneState.unknown;
+  bool partial = false; // only the photos picked in Android's "Select photos"
+  String? error;
+  @override
+  List<CardShot> shots = const [];
+  bool _refreshing = false;
+
+  /// Lists the photos again, if ShotDrop may see them.
+  @override
+  Future<void> refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final access = await _channel.phoneAccess();
+      await _show(access);
+    } catch (e) {
+      error = '$e';
+      _set(PhoneState.error);
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  /// Asks Android for the photos, then shows them.
+  Future<void> requestAccess() async {
+    try {
+      await _show(await _channel.requestPhoneAccess());
+    } catch (e) {
+      error = '$e';
+      _set(PhoneState.error);
+    }
+  }
+
+  Future<void> _show(PhotoAccess access) async {
+    partial = access == PhotoAccess.partial;
+    if (access == PhotoAccess.none || access == PhotoAccess.blocked) {
+      shots = const [];
+      _set(access == PhotoAccess.blocked ? PhoneState.blocked : PhoneState.noAccess);
+      return;
+    }
+    if (state != PhoneState.ready) _set(PhoneState.loading);
+    final files = await _channel.phoneList();
+    shots = [for (final f in files) CardShot(key: f.docId.toUpperCase(), jpg: f)];
+    _set(PhoneState.ready);
+  }
+
+  void _set(PhoneState s) {
+    state = s;
+    notifyListeners();
   }
 }
 

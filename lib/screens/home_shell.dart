@@ -10,18 +10,20 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
 import 'card_screen.dart';
+import 'phone_screen.dart';
 import 'publish_screen.dart';
 import 'selected_screen.dart';
 import 'settings_screen.dart';
 import 'upload_screen.dart';
 
-enum HomeTab { gallery, selected, upload, settings }
+enum HomeTab { gallery, phone, selected, upload, settings }
 
 /// Space to leave at the end of a tab's scrolling content so its last row
 /// can scroll clear of the floating bar.
 const navBarClearance = 96.0;
 
-/// The app's home: four tabs (Gallery, Selected, Upload, Settings) under a
+/// The app's home: five tabs (SD Card Gallery, Phone Gallery, Selected,
+/// Upload, Settings) under a
 /// rounded bar that floats at the bottom centre. Each tab keeps its place
 /// while another is open. Screens opened from a tab (viewer, editor) cover
 /// the bar.
@@ -89,6 +91,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     HapticFeedback.selectionClick();
     HomeShell.hidden.value = false;
     setState(() => _tab = tab);
+    // The phone's photos are only read once the Phone Gallery is opened, and again each time.
+    if (tab == HomeTab.phone) _scope.phone.refresh();
   }
 
   /// A new version: say so once, with the way to get it.
@@ -120,7 +124,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       extendBody: true,
       body: IndexedStack(
         index: _tab.index,
-        children: const [CardScreen(), SelectedScreen(), UploadScreen(), SettingsScreen()],
+        children: const [CardScreen(), PhoneScreen(), SelectedScreen(), UploadScreen(), SettingsScreen()],
       ),
       bottomNavigationBar: ValueListenableBuilder<bool>(
         valueListenable: HomeShell.hidden,
@@ -171,11 +175,18 @@ class _NavBar extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _NavItem(
-                      icon: Icons.photo_library_outlined,
-                      activeIcon: Icons.photo_library_rounded,
-                      label: 'Gallery',
+                      icon: Icons.sd_card_outlined,
+                      activeIcon: Icons.sd_card_rounded,
+                      label: 'SD Card',
                       selected: tab == HomeTab.gallery,
                       onTap: () => onTap(HomeTab.gallery),
+                    ),
+                    _NavItem(
+                      icon: Icons.photo_library_outlined,
+                      activeIcon: Icons.photo_library_rounded,
+                      label: 'Phone',
+                      selected: tab == HomeTab.phone,
+                      onTap: () => onTap(HomeTab.phone),
                     ),
                     _NavItem(
                       icon: Icons.favorite_border_rounded,
@@ -243,7 +254,7 @@ class _NavItem extends StatelessWidget {
         duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
         height: 52,
-        padding: EdgeInsets.symmetric(horizontal: selected ? 18 : 16),
+        padding: EdgeInsets.symmetric(horizontal: selected ? 16 : 14),
         decoration: BoxDecoration(color: selected ? accent : Colors.transparent, borderRadius: BorderRadius.circular(28)),
         child: Row(
           mainAxisSize: MainAxisSize.min,

@@ -5,8 +5,9 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'grid_screen.dart';
 
-/// The home screen: the card's photos once it's plugged in, otherwise what to
-/// do to get there. Rechecks the card whenever the app comes back to the front.
+/// The SD Card Gallery: the card's photos while it's plugged in, otherwise
+/// what to do to get there. Rechecks the card whenever the app comes back to
+/// the front.
 class CardScreen extends StatefulWidget {
   const CardScreen({super.key});
 
@@ -42,8 +43,8 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
         if (card.state == CardState.ready) return const GridScreen();
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Gallery'),
-            actions: const [CardMenuButton(), SizedBox(width: 4)],
+            title: const Text('SD Card Gallery'),
+            bottom: const GalleryToggle(current: Gallery.card),
           ),
           body: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
@@ -71,11 +72,6 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
               onPressed: card.refresh,
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Check Again'),
-            ),
-            TextButton.icon(
-              onPressed: () => _pick(context),
-              icon: const Icon(Icons.folder_open_rounded),
-              label: const Text('Choose A Folder Instead'),
             ),
           ],
         );
@@ -109,7 +105,6 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
           body: card.error ?? 'Something went wrong.',
           actions: [
             FilledButton(onPressed: card.refresh, child: const Text('Try Again')),
-            TextButton(onPressed: () => _pick(context), child: const Text('Choose The Folder Again')),
           ],
         );
       case CardState.ready:
@@ -120,8 +115,8 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
   Future<void> _pick(BuildContext context) => pickCardFolder(context);
 }
 
-/// Opens the folder picker (at the card's DCIM folder when a card is in) and
-/// shows the photos from whatever is picked.
+/// Opens Android's one-time access screen on the plugged-in card's DCIM
+/// folder, then shows the card's photos.
 Future<void> pickCardFolder(BuildContext context) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
@@ -184,23 +179,5 @@ class _PulsingIconState extends State<_PulsingIcon> with SingleTickerProviderSta
         ],
       ),
     ),
-  );
-}
-
-/// ⋮ on the Gallery: the card's own actions (the rest is in Settings).
-class CardMenuButton extends StatelessWidget {
-  const CardMenuButton({super.key});
-
-  @override
-  Widget build(BuildContext context) => PopupMenuButton<String>(
-    icon: const Icon(Icons.more_vert_rounded),
-    onSelected: (v) {
-      if (v == 'rescan') AppScope.of(context).card.refresh();
-      if (v == 'folder') pickCardFolder(context);
-    },
-    itemBuilder: (_) => const [
-      PopupMenuItem(value: 'rescan', child: Text('Rescan The Card')),
-      PopupMenuItem(value: 'folder', child: Text('Choose Another Folder')),
-    ],
   );
 }

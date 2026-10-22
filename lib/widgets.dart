@@ -13,6 +13,7 @@ class AppScope extends InheritedWidget {
   const AppScope({
     super.key,
     required this.card,
+    required this.phone,
     required this.uploads,
     required this.social,
     required this.updater,
@@ -21,6 +22,7 @@ class AppScope extends InheritedWidget {
   });
 
   final CardStore card;
+  final PhoneStore phone;
   final UploadStore uploads;
   final SocialSettings social;
   final Updater updater;
@@ -31,6 +33,7 @@ class AppScope extends InheritedWidget {
   @override
   bool updateShouldNotify(AppScope oldWidget) =>
       card != oldWidget.card ||
+      phone != oldWidget.phone ||
       uploads != oldWidget.uploads ||
       social != oldWidget.social ||
       updater != oldWidget.updater ||

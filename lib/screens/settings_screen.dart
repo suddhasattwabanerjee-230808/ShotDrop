@@ -7,10 +7,10 @@ import '../app_channel.dart';
 import '../edit/post_shape.dart';
 import '../publish.dart';
 import '../storage.dart';
+import '../stores.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
-import 'card_screen.dart';
 import 'home_shell.dart';
 import 'setup_screen.dart';
 
@@ -104,18 +104,6 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     );
   }
 
-  /// "DCIM on the card (1A2B-3C4D)" from the folder's tree uri.
-  static String _folderName(String? uri) {
-    if (uri == null) return 'None Picked Yet';
-    final id = Uri.decodeComponent(uri.split('/tree/').last);
-    final (volume, path) = switch (id.indexOf(':')) {
-      -1 => ('', id),
-      final i => (id.substring(0, i), id.substring(i + 1)),
-    };
-    final where = volume == 'primary' ? 'On The Phone' : 'On The Card${volume.isEmpty ? '' : ' ($volume)'}';
-    return '${path.isEmpty ? 'The whole drive' : path} $where';
-  }
-
   Future<void> _clearCache() async {
     final messenger = ScaffoldMessenger.of(context);
     final dir = await getTemporaryDirectory();
@@ -194,16 +182,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Row(
                   icon: Icons.sd_card_outlined,
-                  title: 'Folder',
-                  subtitle: _folderName(scope.card.folder),
-                ),
-                _Row(
-                  icon: Icons.folder_open_rounded,
-                  title: 'Choose Another Folder',
-                  onTap: () async {
-                    await pickCardFolder(context);
-                    if (context.mounted && scope.card.shots.isNotEmpty) HomeShell.go(context, HomeTab.gallery);
-                  },
+                  title: 'Card',
+                  subtitle: scope.card.state == CardState.ready
+                      ? 'Plugged In · ${scope.card.shots.length} Shots'
+                      : 'Not Plugged In',
                 ),
                 _Row(icon: Icons.refresh_rounded, title: 'Rescan The Card', onTap: scope.card.refresh),
                 _Switch(

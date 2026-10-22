@@ -2,18 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models.dart';
+import '../stores.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'card_screen.dart';
 import 'editor_screen.dart';
 import 'home_shell.dart';
 import 'viewer_screen.dart';
 
-/// The Gallery: every shot on the card, newest first, by day. Tap to view,
+enum Gallery { card, phone }
+
+/// A gallery: every shot on the card (the SD Card Gallery) or every photo on
+/// the phone (the Phone Gallery), newest first, by day. Tap to view,
 /// long-press to pick several, then add them to Selected or edit them
 /// straight into the Upload folder. ♡ marks the ones in Selected.
 class GridScreen extends StatefulWidget {
-  const GridScreen({super.key});
+  const GridScreen({super.key, this.gallery = Gallery.card});
+  final Gallery gallery;
 
   @override
   State<GridScreen> createState() => _GridScreenState();
@@ -102,15 +106,20 @@ class _GridScreenState extends State<GridScreen> {
     }
   }
 
-  // The card's list changes under this screen (rescan, another folder, another
-  // card), so it listens itself: the home screen hands it over as a const widget.
+  ShotSource get _source {
+    final scope = AppScope.of(context);
+    return widget.gallery == Gallery.card ? scope.card : scope.phone;
+  }
+
+  // The list changes under this screen (rescan, another card, new photos on
+  // the phone), so it listens itself: the home screen hands it over as a const widget.
   @override
-  Widget build(BuildContext context) =>
-      ListenableBuilder(listenable: AppScope.of(context).card, builder: (context, _) => _build(context));
+  Widget build(BuildContext context) => ListenableBuilder(listenable: _source, builder: (context, _) => _build(context));
 
   Widget _build(BuildContext context) {
     final scope = AppScope.of(context);
-    final shots = scope.card.shots;
+    final phone = widget.gallery == Gallery.phone;
+    final shots = _source.shots;
     _selected.retainAll({for (final s in shots) s.id});
     final days = <List<CardShot>>[];
     for (final s in shots) {
@@ -136,25 +145,36 @@ class _GridScreenState extends State<GridScreen> {
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Gallery'),
+                    Text(phone ? 'Phone Gallery' : 'SD Card Gallery'),
                     Text(
-                      '${shots.length} shots${rawCount > 0 ? ' · $rawCount with RAW' : ''}',
+                      phone
+                          ? '${shots.length} ${shots.length == 1 ? 'photo' : 'photos'}${scope.phone.partial ? ' · only the ones you allowed' : ''}'
+                          : '${shots.length} shots${rawCount > 0 ? ' · $rawCount with RAW' : ''}',
                       style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
                 actions: [
-                  const CardMenuButton(),
+                  if (phone && scope.phone.partial)
+                    TextButton(onPressed: scope.phone.requestAccess, child: const Text('Allow All')),
+                  IconButton(
+                    tooltip: phone ? 'Refresh' : 'Rescan The Card',
+                    onPressed: _source.refresh,
+                    icon: const Icon(Icons.refresh_rounded),
+                  ),
                 ],
+                bottom: GalleryToggle(current: widget.gallery),
               ),
         body: shots.isEmpty
-            ? const StatePanel(
+            ? StatePanel(
                 icon: Icons.photo_library_outlined,
-                title: 'No Photos Here',
-                body: 'This folder has no JPG or NEF files. Pick the card\'s DCIM folder from the menu.',
+                title: phone ? 'No Photos On The Phone' : 'No Photos On The Card',
+                body: phone
+                    ? 'Photos taken or saved on the phone show up here.'
+                    : 'The card\'s DCIM folder has no JPG or NEF files.',
               )
             : RefreshIndicator(
-                onRefresh: scope.card.refresh,
+                onRefresh: _source.refresh,
                 child: ListenableBuilder(
                   listenable: scope.uploads,
                   builder: (context, _) => CustomScrollView(
@@ -232,6 +252,32 @@ class _GridScreenState extends State<GridScreen> {
   }
 
   static bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+/// SD Card | Phone, under a gallery's title: switches to the other gallery.
+class GalleryToggle extends StatelessWidget implements PreferredSizeWidget {
+  const GalleryToggle({super.key, required this.current});
+  final Gallery current;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(52);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+    child: SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<Gallery>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(value: Gallery.card, icon: Icon(Icons.sd_card_rounded), label: Text('SD Card')),
+          ButtonSegment(value: Gallery.phone, icon: Icon(Icons.smartphone_rounded), label: Text('Phone')),
+        ],
+        selected: {current},
+        onSelectionChanged: (s) => HomeShell.go(context, s.single == Gallery.card ? HomeTab.gallery : HomeTab.phone),
+      ),
+    ),
+  );
 }
 
 class _DayHeader extends StatelessWidget {

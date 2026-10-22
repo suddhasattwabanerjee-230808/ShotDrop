@@ -29,6 +29,11 @@ class MainActivity : FlutterActivity() {
         if (CardPlugReceiver.isCard(intent)) app?.cardPlugged()
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        card?.onPermissionResult(requestCode)
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (card?.onActivityResult(requestCode, resultCode, data) == true) return

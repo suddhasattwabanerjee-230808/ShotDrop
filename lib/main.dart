@@ -37,7 +37,7 @@ Future<void> main() async {
     card.load();
     // In the background: a dot on Settings if there's a new version.
     if (settings.checkUpdates) updater.check();
-    runApp(ShotDropApp(card: card, uploads: uploads, social: social, updater: updater, settings: settings));
+    runApp(ShotDropApp(card: card, phone: PhoneStore(), uploads: uploads, social: social, updater: updater, settings: settings));
   }, reportError);
 }
 
@@ -45,6 +45,7 @@ class ShotDropApp extends StatelessWidget {
   const ShotDropApp({
     super.key,
     required this.card,
+    required this.phone,
     required this.uploads,
     required this.social,
     required this.updater,
@@ -52,6 +53,7 @@ class ShotDropApp extends StatelessWidget {
   });
 
   final CardStore card;
+  final PhoneStore phone;
   final UploadStore uploads;
   final SocialSettings social;
   final Updater updater;
@@ -60,6 +62,7 @@ class ShotDropApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AppScope(
     card: card,
+    phone: phone,
     uploads: uploads,
     social: social,
     updater: updater,

@@ -6,6 +6,10 @@ import 'models.dart';
 
 enum CardAccess { ok, missing, noPermission }
 
+/// Access to the phone's photos: all, only some (Android 14's "Select
+/// photos"), none yet, or refused for good (only Android's settings can change it).
+enum PhotoAccess { all, partial, none, blocked }
+
 /// The Android side of the SD card (CardChannel.kt). Flutter can't read
 /// content:// uris itself, so everything it shows is a file this side writes.
 class CardChannel {
@@ -36,6 +40,19 @@ class CardChannel {
 
   Future<List<CardFile>> list(String treeUri) async {
     final r = await _m.invokeListMethod<Map<Object?, Object?>>('list', {'treeUri': treeUri});
+    return [for (final m in r ?? const <Map<Object?, Object?>>[]) CardFile.fromMap(m)];
+  }
+
+  Future<PhotoAccess> phoneAccess() async =>
+      PhotoAccess.values.asNameMap()[await _m.invokeMethod<String>('phoneAccess')] ?? PhotoAccess.none;
+
+  /// Asks Android for the phone's photos.
+  Future<PhotoAccess> requestPhoneAccess() async =>
+      PhotoAccess.values.asNameMap()[await _m.invokeMethod<String>('requestPhoneAccess')] ?? PhotoAccess.none;
+
+  /// Every photo in the phone's gallery, newest first.
+  Future<List<CardFile>> phoneList() async {
+    final r = await _m.invokeListMethod<Map<Object?, Object?>>('phoneList');
     return [for (final m in r ?? const <Map<Object?, Object?>>[]) CardFile.fromMap(m)];
   }
 

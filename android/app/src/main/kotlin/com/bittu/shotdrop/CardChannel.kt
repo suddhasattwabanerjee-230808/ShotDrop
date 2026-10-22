@@ -1,11 +1,14 @@
 package com.bittu.shotdrop
 
+import android.Manifest
 import android.app.Activity
 import android.content.BroadcastReceiver
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -44,6 +47,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     private val lister = Executors.newSingleThreadExecutor()
 
     private var pendingPick: MethodChannel.Result? = null
+    private var pendingPhotos: MethodChannel.Result? = null
     private var volumeReceiver: BroadcastReceiver? = null
     private var volumeCallback: Any? = null // StorageManager.StorageVolumeCallback, API 30+
     private val storage by lazy { activity.getSystemService(StorageManager::class.java) }
@@ -107,6 +111,9 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "pickFolder" -> pickFolder(result)
+            "phoneAccess" -> result.success(phoneAccess())
+            "requestPhoneAccess" -> requestPhoneAccess(result)
+            "phoneList" -> background(result, lister) { phoneList() }
             "access" -> background(result, lister) { access(Uri.parse(call.argument<String>("treeUri"))) }
             "findCard" -> background(result, lister) { findCard() }
             "cardVolume" -> background(result, lister) { removableVolume()?.getDescription(activity) }
@@ -274,6 +281,78 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
         }
     }
 
+    // --- The phone's own gallery ------------------------------------------------
+
+    /** "all", "partial" (Android 14+: only photos the user picked), or "none". */
+    private fun phoneAccess(): String {
+        fun has(p: String) = activity.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+        return when {
+            Build.VERSION.SDK_INT >= 33 && has(Manifest.permission.READ_MEDIA_IMAGES) -> "all"
+            Build.VERSION.SDK_INT < 33 && has(Manifest.permission.READ_EXTERNAL_STORAGE) -> "all"
+            Build.VERSION.SDK_INT >= 34 && has(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) -> "partial"
+            else -> "none"
+        }
+    }
+
+    private val photoPermission
+        get() = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+
+    /** Asks for the photos; answers like [phoneAccess], or "blocked" once Android won't ask again. */
+    private fun requestPhoneAccess(result: MethodChannel.Result) {
+        pendingPhotos?.success(phoneAccess())
+        pendingPhotos = result
+        val asking = if (Build.VERSION.SDK_INT >= 34) {
+            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+        } else {
+            arrayOf(photoPermission)
+        }
+        activity.requestPermissions(asking, PHOTOS_REQUEST)
+    }
+
+    /** From MainActivity: the answer to [requestPhoneAccess]. */
+    fun onPermissionResult(requestCode: Int): Boolean {
+        if (requestCode != PHOTOS_REQUEST) return false
+        val access = phoneAccess()
+        val blocked = access == "none" && !activity.shouldShowRequestPermissionRationale(photoPermission)
+        pendingPhotos?.success(if (blocked) "blocked" else access)
+        pendingPhotos = null
+        return true
+    }
+
+    /** Every photo in the phone's gallery, newest first (not ShotDrop's own copies). */
+    private fun phoneList(): List<Map<String, Any?>> {
+        val base = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        val out = ArrayList<Map<String, Any?>>()
+        activity.contentResolver.query(
+            base,
+            arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.SIZE,
+                MediaStore.Images.Media.DATE_TAKEN,
+                MediaStore.Images.Media.DATE_MODIFIED,
+            ),
+            "(${MediaStore.Images.Media.RELATIVE_PATH} IS NULL OR ${MediaStore.Images.Media.RELATIVE_PATH} NOT LIKE ?)",
+            arrayOf("${Environment.DIRECTORY_PICTURES}/ShotDrop/%"),
+            "${MediaStore.Images.Media.DATE_TAKEN} DESC, ${MediaStore.Images.Media.DATE_MODIFIED} DESC",
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val taken = c.getLong(3).takeIf { it > 0 } ?: (c.getLong(4) * 1000)
+                out.add(
+                    mapOf(
+                        "uri" to ContentUris.withAppendedId(base, id).toString(),
+                        "docId" to "phone:$id",
+                        "name" to (c.getString(1) ?: "IMG_$id.jpg"),
+                        "size" to c.getLong(2),
+                        "modified" to taken,
+                    ),
+                )
+            }
+        }
+        return out
+    }
+
     // --- Images ---------------------------------------------------------------
 
     private fun thumbnail(uri: Uri, key: String, maxEdge: Int, fast: Boolean): String? {
@@ -283,7 +362,14 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
             file.setLastModified(System.currentTimeMillis()) // used: the storage tidy-up keeps it longer
             return file.absolutePath
         }
-        val bitmap = (if (fast) decodeExifThumbnail(uri) else decodeUpright(uri, maxEdge)) ?: return null
+        // Phone photos: Android keeps thumbnails of its own (upright, any format); the card's camera JPEGs carry one in EXIF.
+        val bitmap = when {
+            uri.authority == MediaStore.AUTHORITY && (fast || maxEdge <= 512) ->
+                runCatching { activity.contentResolver.loadThumbnail(uri, android.util.Size(maxEdge, maxEdge), null) }.getOrNull()
+                    ?: decodeUpright(uri, maxEdge)
+            fast -> decodeExifThumbnail(uri)
+            else -> decodeUpright(uri, maxEdge)
+        } ?: return null
         writeJpeg(bitmap, file, if (fast) 80 else 88)
         bitmap.recycle()
         return file.absolutePath
@@ -366,6 +452,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
 
     companion object {
         private const val PICK_FOLDER = 4201
+        private const val PHOTOS_REQUEST = 4202
         private const val EXTERNAL_STORAGE = "com.android.externalstorage.documents"
         private val PHOTO_EXTENSIONS = setOf("JPG", "JPEG", "NEF", "NRW")
     }

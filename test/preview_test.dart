@@ -16,6 +16,7 @@ import 'package:shotdrop/screens/editor_screen.dart';
 import 'package:shotdrop/screens/viewer_screen.dart';
 import 'package:shotdrop/stores.dart';
 import 'package:shotdrop/update.dart';
+import 'package:shotdrop/widgets.dart';
 
 const outDir = String.fromEnvironment('PREVIEW_DIR');
 // Optional: a phone screenshot with a person in it, and the y range (in
@@ -141,6 +142,7 @@ void main() {
   }
 
   testWidgets('screens', (tester) async {
+    var phoneAllowed = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('shotdrop/card'),
       (call) async {
@@ -173,6 +175,16 @@ void main() {
               ..parent.createSync(recursive: true)
               ..writeAsBytesSync(png!.buffer.asUint8List());
             return null;
+          case 'phoneAccess':
+            return phoneAllowed ? 'all' : 'none';
+          case 'requestPhoneAccess':
+            phoneAllowed = true;
+            return 'all';
+          case 'phoneList':
+            return [
+              for (final (i, f) in files.where((f) => f.name.endsWith('.JPG')).take(7).indexed)
+                {'uri': f.uri, 'docId': 'phone:$i', 'name': 'IMG_2026102$i.jpg', 'size': f.size, 'modified': f.modified - i * 86400000},
+            ];
           case 'saveToGallery':
             return 'content://media/1';
         }
@@ -250,7 +262,7 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('preview-root'),
-        child: ShotDropApp(card: card, uploads: uploads, social: social, updater: Updater(), settings: AppSettings()),
+        child: ShotDropApp(card: card, phone: PhoneStore(), uploads: uploads, social: social, updater: Updater(), settings: AppSettings()),
       ),
     );
     await shot(tester, '0_setup');
@@ -260,9 +272,9 @@ void main() {
     await shot(tester, '1_grid');
 
     // Pick a few and keep them in Selected
-    await tester.longPress(find.byType(GestureDetector).at(3));
+    await tester.longPress(find.byType(CardImage).at(0));
     await tester.pump();
-    await tester.tap(find.byType(GestureDetector).at(5));
+    await tester.tap(find.byType(CardImage).at(2));
     await tester.pump(const Duration(milliseconds: 300));
     await shot(tester, '2_grid_selecting');
     await tester.tap(find.text('To Selected'));
@@ -274,7 +286,14 @@ void main() {
     await shot(tester, '2b_selected');
     await tester.tap(bar(Icons.settings_outlined));
     await shot(tester, '2c_settings');
+    // The Phone Gallery: asks first, then the phone's photos.
     await tester.tap(bar(Icons.photo_library_outlined));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await shot(tester, '2d_phone_ask');
+    await tester.tap(find.text('Allow Access'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await shot(tester, '2e_phone_gallery');
+    await tester.tap(bar(Icons.sd_card_outlined));
     await tester.pump(const Duration(milliseconds: 300));
 
     final nav = tester.state<NavigatorState>(find.byType(Navigator));

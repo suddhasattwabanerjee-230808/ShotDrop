@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.1] - 2026-10-22 (build 11)
+
+A Phone Gallery, a cleaner crop, and a new icon.
+
+- **Phone Gallery:** a new tab in the floating bar shows every photo on the phone (Android asks once). View, pick, edit and post them just like the card's. The card's tab is now the **SD Card Gallery**, and an SD Card | Phone switch at the top of each goes to the other. Unplugging the card still empties the SD Card Gallery; the Phone Gallery only opens when you go to it.
+- **No more Choose Another Folder:** the SD Card Gallery shows the plugged-in card, and only the card.
+- **Crop preview:** once you let go, only the cropped photo shows, as it'll be saved. While you move it, the rest of the photo shows faintly around the frame.
+- **"Did It Post?"** has just Yes and Do It Later.
+- **New app icon:** your photo, filling the icon shape your launcher uses.
+
 ## [0.6.0] - 2026-10-22 (build 10)
 
 Straight to Instagram, a real crop, and tidier storage.
