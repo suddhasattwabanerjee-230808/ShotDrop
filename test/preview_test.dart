@@ -210,7 +210,9 @@ void main() {
       (call) async => switch (call.method) {
         'prefs' => prefs,
         'setPref' => prefs[(call.arguments as Map)['key'] as String] = (call.arguments as Map)['value'],
-        'version' => {'name': '0.5.3', 'code': 9},
+        'version' => {'name': '0.6.0', 'code': 10},
+        'freeSpace' => 50000000000,
+        'tidyNotes' => 0,
         _ => null,
       },
     );
@@ -282,6 +284,16 @@ void main() {
 
     nav.push(MaterialPageRoute<void>(builder: (_) => EditorScreen(targets: [EditTarget.fromShot(card.shots[1])])));
     await shot(tester, '4_editor_crop');
+    // The photo moves under the frame.
+    final stage = tester.getCenter(find.byType(CustomPaint).first);
+    final g = await tester.startGesture(stage);
+    await g.moveBy(const Offset(0, 30));
+    await g.moveBy(const Offset(0, 30));
+    await tester.pump();
+    await shot(tester, '4b_crop_moving');
+    await g.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '4c_crop_moved');
 
     await tester.tap(find.text('Body'));
     await shot(tester, '5_editor_body');
@@ -334,26 +346,44 @@ void main() {
     await tester.pump();
     await shot(tester, '9b_publish_sheet_post_story');
     await tester.tap(find.text('Start'));
-    await shot(tester, '10_publish_post_step');
-    await tester.tap(find.text('Open Instagram'));
-    await shot(tester, '11_publish_post_asking');
-    await tester.tap(find.text("Yes, It's Posted"));
-    await shot(tester, '11b_publish_facebook_step');
-    await tester.tap(find.text('Open Facebook'));
-    await shot(tester, '11c_publish_facebook_asking');
-    await tester.tap(find.text("Yes, It's Posted"));
-    await shot(tester, '12_publish_story_step');
-    await tester.tap(find.text('Open Instagram'));
-    // The story render (blur at 1080 x 1920) is slow on the test renderer.
-    await tester.runAsync(() async {
-      for (var i = 0; i < 300 && find.text("Yes, It's Posted").evaluate().isEmpty; i++) {
+    // Start goes straight out to Instagram: the sheet closes by itself.
+    Future<void> settle(bool Function() done) => tester.runAsync(() async {
+      for (var i = 0; i < 900 && !done(); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 100));
       }
+      if (!done()) debugPrint('STUCK: ${find.byType(Text).evaluate().map((e) => (e.widget as Text).data).join(' | ')}');
     });
-    await shot(tester, '13_publish_story_asking');
+    await settle(() => find.byType(BottomSheet).evaluate().isEmpty);
+    expect(uploads.session, isNotNull);
+    // Back from Instagram: "Did It Post?"
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pump();
+    await shot(tester, '10_did_it_post');
+    await tester.tap(find.text('Yes, Open The Next One'));
+    bool ready(String step, String yes) =>
+        find.text(step).evaluate().isNotEmpty &&
+        find.text(yes).evaluate().isNotEmpty &&
+        find.byType(CircularProgressIndicator).evaluate().isEmpty;
+    await settle(() => ready('Step 2 Of 3', 'Yes, Open The Next One'));
+    await shot(tester, '11_did_it_post_facebook');
+    await tester.tap(find.text('Yes, Open The Next One'));
+    // The story render (blur at 1080 x 1920) is slow on the test renderer.
+    await settle(() => ready('Step 3 Of 3', "Yes, It's Posted"));
+    await shot(tester, '12_did_it_post_story');
     await tester.tap(find.text("Yes, It's Posted"));
+    await settle(() => find.text('Posted To Instagram').evaluate().isNotEmpty);
     await shot(tester, '14_publish_done');
+    expect(uploads.session, isNull);
     await tester.runAsync(() async {
       final story = Directory('${tmp.path}/app/uploads')
           .listSync()

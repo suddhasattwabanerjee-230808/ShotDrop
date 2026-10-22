@@ -7,12 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shotdrop/edit/body.dart';
 import 'package:shotdrop/edit/crop.dart';
 import 'package:shotdrop/edit/filters.dart';
+import 'package:shotdrop/edit/post_shape.dart';
 import 'package:shotdrop/edit/render.dart';
 import 'package:shotdrop/edit/reshape.dart';
 import 'package:shotdrop/edit/shape.dart';
 import 'package:shotdrop/edit/story.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/publish.dart';
+import 'package:shotdrop/storage.dart';
 import 'package:shotdrop/stores.dart';
 import 'package:shotdrop/update.dart';
 
@@ -359,11 +361,7 @@ void main() {
   });
 
   group('render', () {
-    Future<ui.Image> solid(int w, int h) {
-      final r = ui.PictureRecorder();
-      Canvas(r).drawRect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), Paint()..color = const Color(0xFF3366CC));
-      return r.endRecording().toImage(w, h);
-    }
+    const solid = _solid;
 
     test('output size follows turns, crop and the long-edge cap', () async {
       final src = await solid(300, 200);
@@ -430,6 +428,104 @@ void main() {
     });
   });
 
+  group('post shape', () {
+    test('a post takes its first photo\'s shape, within Instagram\'s limits', () {
+      expect(postAspect([2 / 3, 1.5]), 0.8); // a D5600 portrait: too tall, so 4:5
+      expect(postAspect([1.5, 2 / 3]), 1.5);
+      expect(postAspect([3.0]), 1.91);
+      expect(needsReshape(0.8, 0.8), isFalse);
+      expect(needsReshape(2 / 3, 0.8), isTrue);
+    });
+
+    test('cropping keeps the short side; borders keep the long side', () {
+      const portrait = Size(4000, 6000);
+      expect(reshapedSize(portrait, 0.8, PostFit.crop, maxEdge: 10000), const Size(4000, 5000));
+      expect(reshapedSize(portrait, 0.8, PostFit.borders, maxEdge: 10000), const Size(4800, 6000));
+      expect(reshapedSize(portrait, 0.8, PostFit.crop), const Size(1728, 2160));
+      const landscape = Size(6000, 4000);
+      expect(reshapedSize(landscape, 0.8, PostFit.crop, maxEdge: 10000), const Size(3200, 4000));
+      expect(reshapedSize(landscape, 0.8, PostFit.borders, maxEdge: 10000), const Size(6000, 7500));
+    });
+
+    test('counts the photos each carousel reshapes', () {
+      expect(reshapedCount([0.8, 1.0, 0.8]), 1);
+      expect(reshapedCount([2 / 3]), 1);
+      expect(reshapedCount([1.5, null]), 0);
+      expect(reshapedCount([for (var i = 0; i < 11; i++) i == 10 ? 2 / 3 : 1.0]), 1); // the 11th starts a new carousel
+    });
+
+    test('reshaped renders come out at the size asked for', () async {
+      final photo = await _solid(60, 90);
+      for (final fit in PostFit.values) {
+        final out = await renderReshaped(photo, 0.8, fit);
+        expect(Size(out.width.toDouble(), out.height.toDouble()), reshapedSize(const Size(60, 90), 0.8, fit));
+      }
+    });
+  });
+
+  group('publish session', () {
+    final items = [for (final id in ['A', 'B', 'C']) _item(id)];
+
+    test('later is everything not done, splitting gives one step per photo', () {
+      final s = PublishSession(mode: PublishMode.post, steps: buildPlan(items, PublishMode.post), fit: PostFit.crop)
+        ..splitCurrent();
+      expect(s.steps.length, 3);
+      s.resolve(StepStatus.done);
+      expect(s.nextStep!.items.single.shotId, 'C');
+      s.stop();
+      expect(s.finished, isTrue);
+      expect(s.postedIds, {'A'});
+      expect(s.laterIds, {'B', 'C'});
+    });
+  });
+
+  group('crop view', () {
+    test('the frame fills the screen and the photo sits around it', () {
+      const o = Size(3000, 2000), box = Size(400, 800);
+      final l = cropLayout(o, const Rect.fromLTWH(0.25, 0, 0.5, 1), box, pad: 0, top: 0);
+      expect(l.frame.width, closeTo(400, 1e-6));
+      expect(l.frame.height, closeTo(400 * 2000 / 1500, 1e-6));
+      expect(l.photo.width, closeTo(800, 1e-6));
+      expect(l.photo.left, closeTo(-200, 1e-6));
+    });
+
+    test('dragging moves the crop the other way; pinching zooms around the fingers', () {
+      const photo = Rect.fromLTWH(-200, 0, 800, 400), frame = Rect.fromLTWH(0, 0, 400, 400);
+      final moved = panZoomCrop(photo: photo, frame: frame, focal0: Offset.zero, focal: const Offset(100, 0), scale: 1);
+      expect(moved.left, closeTo(0.125, 1e-6)); // photo right by 100 px of 800: the crop goes left
+      expect(moved.width, closeTo(0.5, 1e-6));
+      final zoomed = panZoomCrop(
+        photo: photo,
+        frame: frame,
+        focal0: const Offset(200, 200),
+        focal: const Offset(200, 200),
+        scale: 2,
+      );
+      expect(zoomed.width, closeTo(0.25, 1e-6));
+      expect(zoomed.center.dx, closeTo(0.5, 1e-6));
+      expect(zoomed.center.dy, closeTo(0.5, 1e-6));
+      // Zooming out stops once the photo just covers the frame; it never leaves the photo.
+      final out = panZoomCrop(photo: photo, frame: frame, focal0: Offset.zero, focal: const Offset(-900, 50), scale: 0.1);
+      expect(out.height, closeTo(1, 1e-6));
+      expect(out.left, closeTo(0.5, 1e-6));
+      expect(out.top, 0);
+    });
+  });
+
+  group('storage', () {
+    test('thumbnails over the cap go oldest first; old ones go anyway', () async {
+      final dir = Directory.systemTemp.createTempSync('shotdrop_thumbs');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final now = DateTime.now();
+      for (final (name, daysAgo) in [('a', 40), ('b', 3), ('c', 2), ('d', 1)]) {
+        final f = File('${dir.path}/$name.jpg')..writeAsBytesSync(List.filled(100, 0));
+        f.setLastModifiedSync(now.subtract(Duration(days: daysAgo)));
+      }
+      expect(await trimThumbs(dir, 250), 200); // a (too old), then b (oldest)
+      expect(dir.listSync().map((e) => e.path.split('/').last).toSet(), {'c.jpg', 'd.jpg'});
+    });
+  });
+
   group('UploadStore', () {
     late Directory dir;
     setUp(() => dir = Directory.systemTemp.createTempSync('shotdrop_test'));
@@ -473,9 +569,83 @@ void main() {
       await s.finishPublishing(['A']);
       expect(s.isPublished('A'), isTrue);
       expect(s.queued, isEmpty);
+      expect(s.session, isNull);
       expect(s.isSelected('B'), isTrue);
       expect(s.byShot('B')!.edited, isTrue); // keeps its edit for later
       expect(s.caption, '');
+    });
+
+    test('photos left for later stay in the Upload folder, with the caption', () async {
+      final s = UploadStore(dir: dir);
+      for (final id in ['A', 'B', 'C']) {
+        await s.put(item(id));
+      }
+      await s.setCaption('hi');
+      await s.finishPublishing(['A'], later: ['B']);
+      expect(s.isPublished('A'), isTrue);
+      expect(s.byShot('A')!.postedAt, isNotNull);
+      expect(s.queued.map((i) => i.shotId), ['B']); // left for later
+      expect(s.isSelected('C'), isTrue); // wasn't ticked: back to Selected
+      expect(s.caption, 'hi');
+    });
+
+    test('a round of publishing survives a restart', () async {
+      final a = UploadStore(dir: dir);
+      await a.put(item('A'));
+      await a.put(item('B'));
+      final session = PublishSession(
+        mode: PublishMode.postAndStory,
+        steps: buildPlan([a.byShot('A')!, a.byShot('B')!], PublishMode.postAndStory),
+        fit: PostFit.borders,
+      )..resolve(StepStatus.done);
+      await a.setSession(session);
+      await a.remove('B'); // gone meanwhile: its story step goes too
+
+      final b = UploadStore(dir: dir);
+      await b.load();
+      final s = b.session!;
+      expect(s.fit, PostFit.borders);
+      expect(s.steps.map((x) => x.kind), [StepKind.instagramPost, StepKind.instagramStory]);
+      expect(s.steps.first.items.map((i) => i.shotId), ['A']);
+      expect(s.current, 1);
+      expect(s.postedIds, {'A'});
+      await b.finishPublishing(s.postedIds);
+      expect(b.session, isNull);
+    });
+
+    test('tidying deletes unused copies and old posted copies, nothing else', () async {
+      final s = UploadStore(dir: dir);
+      final old = DateTime.now().subtract(const Duration(days: 3));
+      Future<File> make(String rel, {DateTime? at}) async {
+        final f = File('${dir.path}/$rel');
+        await f.parent.create(recursive: true);
+        await f.writeAsBytes(List.filled(100, 1));
+        await f.setLastModified(at ?? old);
+        return f;
+      }
+
+      UploadItem kept(String id) => UploadItem(
+        shotId: id,
+        name: id,
+        taken: DateTime(2026),
+        sourcePath: '${dir.path}/sources/$id.jpg',
+        exportPath: '${dir.path}/uploads/$id-1.jpg',
+      );
+      for (final id in ['A', 'P']) {
+        await make('sources/$id.jpg');
+        await make('uploads/$id-1.jpg');
+        await s.put(kept(id));
+      }
+      final story = await make('uploads/A-1-story.jpg');
+      final orphan = await make('uploads/gone-1.jpg');
+      final fresh = await make('uploads/saving-1.jpg', at: DateTime.now());
+      await s.finishPublishing(['P']);
+      expect(await s.clearUnused(), 200);
+      expect([story.existsSync(), orphan.existsSync(), fresh.existsSync()], [false, false, true]);
+      // Posted just now: kept a week; cleared when asked for everything.
+      expect(await s.clearPosted(before: DateTime.now().subtract(const Duration(days: 7))), 0);
+      expect(await s.clearPosted(), 200);
+      expect(File('${dir.path}/sources/A.jpg').existsSync(), isTrue); // the Upload folder's own
     });
 
     test('editing a Selected photo moves it to the end of the Upload folder', () async {
@@ -519,6 +689,12 @@ UploadItem _item(String id) => UploadItem(
   exportPath: '/e/$id.jpg',
   params: const EditParams(),
 );
+
+Future<ui.Image> _solid(int w, int h) {
+  final r = ui.PictureRecorder();
+  Canvas(r).drawRect(Rect.fromLTWH(0, 0, w.toDouble(), h.toDouble()), Paint()..color = const Color(0xFF3366CC));
+  return r.endRecording().toImage(w, h);
+}
 
 /// A [w] x [h] person outline: a head (30 wide) near the top, then a body 40
 /// wide down to the bottom, centred.

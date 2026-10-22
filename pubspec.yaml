@@ -1,7 +1,7 @@
 name: shotdrop
 description: "Camera card to Instagram: pick, edit and post photos from a Nikon SD card."
 publish_to: 'none'
-version: 0.5.3+9
+version: 0.6.0+10
 
 environment:
   sdk: ^3.13.5

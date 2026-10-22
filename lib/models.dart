@@ -253,6 +253,7 @@ class UploadItem {
     this.status = ItemStatus.queued,
     this.width,
     this.height,
+    this.postedAt,
   });
 
   final String shotId; // CardShot.id, so the grid can mark it
@@ -264,6 +265,7 @@ class UploadItem {
   final String? galleryUri; // its copy in Pictures/ShotDrop/Upload
   final ItemStatus status;
   final int? width, height; // of the export, in pixels
+  final DateTime? postedAt; // when it went out (its copies are tidied away some days later)
 
   bool get published => status == ItemStatus.published;
   bool get edited => exportPath != null;
@@ -274,7 +276,13 @@ class UploadItem {
   /// Width / height of the export, if known.
   double? get aspect => width != null && height != null && height! > 0 ? width! / height! : null;
 
-  UploadItem copyWith({String? exportPath, EditParams? params, String? galleryUri, ItemStatus? status}) => UploadItem(
+  UploadItem copyWith({
+    String? exportPath,
+    EditParams? params,
+    String? galleryUri,
+    ItemStatus? status,
+    DateTime? postedAt,
+  }) => UploadItem(
     shotId: shotId,
     name: name,
     taken: taken,
@@ -285,6 +293,7 @@ class UploadItem {
     status: status ?? this.status,
     width: width,
     height: height,
+    postedAt: postedAt ?? this.postedAt,
   );
 
   Map<String, Object?> toJson() => {
@@ -298,6 +307,7 @@ class UploadItem {
     'status': status.name,
     'width': width,
     'height': height,
+    'postedAt': postedAt?.millisecondsSinceEpoch,
   };
 
   factory UploadItem.fromJson(Map<String, Object?> j) => UploadItem(
@@ -314,6 +324,10 @@ class UploadItem {
         (j['published'] == true ? ItemStatus.published : ItemStatus.queued),
     width: (j['width'] as num?)?.toInt(),
     height: (j['height'] as num?)?.toInt(),
+    postedAt: switch (j['postedAt']) {
+      final num ms => DateTime.fromMillisecondsSinceEpoch(ms.toInt()),
+      _ => null,
+    },
   );
 }
 

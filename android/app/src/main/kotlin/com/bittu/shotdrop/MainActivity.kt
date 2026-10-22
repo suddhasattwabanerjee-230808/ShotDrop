@@ -18,6 +18,17 @@ class MainActivity : FlutterActivity() {
         app = AppChannel(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
+    override fun onResume() {
+        super.onResume()
+        CaptionService.stopWatching()
+    }
+
+    // Already open, and a card was plugged in: show the Gallery.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (CardPlugReceiver.isCard(intent)) app?.cardPlugged()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         if (card?.onActivityResult(requestCode, resultCode, data) == true) return

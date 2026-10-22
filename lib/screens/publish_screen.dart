@@ -6,18 +6,21 @@ import 'package:flutter/services.dart';
 
 import '../app_channel.dart';
 import '../card_channel.dart';
-import '../edit/crop.dart';
+import '../edit/post_shape.dart';
 import '../edit/story.dart';
 import '../models.dart';
 import '../publish.dart';
 import '../share_channel.dart';
+import '../storage.dart';
+import '../stores.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
 import 'setup_screen.dart';
 
 /// The Publish sheet: how to post [items] (the ones ticked in the Upload
-/// folder; the rest stay there). Starts [PublishScreen].
+/// folder; the rest stay there). Start sends the first of them straight out
+/// to Instagram; "Did It Post?" ([PublishScreen]) comes up on the way back.
 Future<void> showPublishSheet(BuildContext context, List<UploadItem> items) async {
   final scope = AppScope.of(context);
   if (items.isEmpty) return;
@@ -27,28 +30,34 @@ Future<void> showPublishSheet(BuildContext context, List<UploadItem> items) asyn
   } catch (_) {
     apps = (instagram: false, facebook: false);
   }
+  final aspects = await Future.wait([for (final i in items) i.aspect != null ? Future.value(i.aspect) : photoAspect(i.previewPath)]);
   if (!context.mounted) return;
-  final choice = await showModalBottomSheet<(PublishMode, bool)>(
+  await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _PublishSheet(items: items, apps: apps, scope: scope),
-  );
-  if (choice == null || !context.mounted) return;
-  final (mode, facebook) = choice;
-  await Navigator.of(context).push(
-    MaterialPageRoute<void>(
-      builder: (_) => PublishScreen(
-        steps: buildPlan(items, mode, facebook: facebook),
-        mode: mode,
-      ),
-    ),
+    builder: (_) => _PublishSheet(items: items, apps: apps, scope: scope, reshaped: reshapedCount(aspects)),
   );
 }
 
+/// Width / height of the photo at [path], read from its header; null if it can't be read.
+Future<double?> photoAspect(String path) async {
+  try {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(await File(path).readAsBytes());
+    final d = await ui.ImageDescriptor.encoded(buffer);
+    final aspect = d.width / d.height;
+    d.dispose();
+    buffer.dispose();
+    return aspect;
+  } catch (_) {
+    return null;
+  }
+}
+
 class _PublishSheet extends StatefulWidget {
-  const _PublishSheet({required this.items, required this.apps, required this.scope});
+  const _PublishSheet({required this.items, required this.apps, required this.scope, required this.reshaped});
   final List<UploadItem> items;
+  final int reshaped; // photos that don't fit an Instagram post as they are
   final ({bool instagram, bool facebook}) apps;
   final AppScope scope;
 
@@ -59,6 +68,27 @@ class _PublishSheet extends StatefulWidget {
 class _PublishSheetState extends State<_PublishSheet> {
   late var _mode = PublishMode.values.asNameMap()[widget.scope.settings.publishMode] ?? PublishMode.post;
   late bool _facebook = widget.apps.facebook && !widget.scope.social.instagramSharesToFacebook;
+  late var _fit = PostFit.values.asNameMap()[widget.scope.settings.postFit] ?? PostFit.crop;
+  String? _busy; // getting the photos ready, after Start
+
+  Future<void> _start() async {
+    final uploads = widget.scope.uploads;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    HapticFeedback.mediumImpact();
+    setState(() => _busy = 'Getting Ready…');
+    await uploads.setSession(
+      PublishSession(
+        mode: _mode,
+        steps: buildPlan(widget.items, _mode, facebook: _mode.hasPost && _facebook),
+        fit: _fit,
+      ),
+    );
+    final error = await openStep(uploads, messenger, busy: (b) => mounted ? setState(() => _busy = b) : null);
+    if (error != null) await uploads.setSession(null);
+    navigator.pop();
+    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
+  }
 
   int get _n => widget.items.length;
 
@@ -81,7 +111,7 @@ class _PublishSheetState extends State<_PublishSheet> {
   Widget build(BuildContext context) {
     final social = widget.scope.social;
     final caption = widget.scope.uploads.caption.trim();
-    final tooTall = widget.items.where((i) => i.aspect != null && !fitsFeed(i.aspect!)).length;
+    final reshaped = widget.reshaped;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
@@ -107,13 +137,28 @@ class _PublishSheetState extends State<_PublishSheet> {
             const SizedBox(height: 16),
             for (final m in PublishMode.values)
               _ModeCard(mode: m, detail: _describe(m), selected: _mode == m, onTap: () => setState(() => _mode = m)),
-            if (_mode.hasPost && tooTall > 0)
-              _Note(
-                icon: Icons.info_outline_rounded,
-                text:
-                    '$tooTall ${tooTall == 1 ? 'photo is' : 'photos are'} outside Instagram\'s post shape (4:5 to 1.91:1), '
-                    'so Instagram will crop ${tooTall == 1 ? 'it' : 'them'}. Fine for stories.',
+            if (_mode.hasPost && reshaped > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                '$reshaped ${reshaped == 1 ? 'Photo Doesn\'t' : 'Photos Don\'t'} Fit An Instagram Post',
+                style: const TextStyle(fontWeight: FontWeight.w800),
               ),
+              const SizedBox(height: 2),
+              Text(
+                widget.items.length > 1
+                    ? 'Posts go from 4:5 (tall) to 1.91:1 (wide), and a carousel takes its first photo\'s shape.'
+                    : 'Posts go from 4:5 (tall) to 1.91:1 (wide).',
+                style: const TextStyle(fontSize: 12, color: muted, height: 1.4),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<PostFit>(
+                showSelectedIcon: false,
+                segments: [for (final f in PostFit.values) ButtonSegment(value: f, label: Text(f.label))],
+                selected: {_fit},
+                onSelectionChanged: (s) => setState(() => _fit = s.single),
+              ),
+              _Note(icon: Icons.info_outline_rounded, text: '${_fit.detail}. Stories always show the whole photo.'),
+            ],
             if (_mode.hasPost)
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -136,9 +181,21 @@ class _PublishSheetState extends State<_PublishSheet> {
                   : 'Caption: ${caption.length > 80 ? '${caption.substring(0, 80)}…' : caption}',
             ),
             const SizedBox(height: 12),
-            if (widget.apps.instagram)
+            if (_busy != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 10),
+                    Text(_busy!, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              )
+            else if (widget.apps.instagram)
               FilledButton.icon(
-                onPressed: () => Navigator.pop(context, (_mode, _mode.hasPost && _facebook)),
+                onPressed: _start,
                 icon: const Icon(Icons.send_rounded),
                 label: const Text('Start'),
               )
@@ -232,410 +289,403 @@ class _Note extends StatelessWidget {
   );
 }
 
-// --- The publishing walk-through ------------------------------------------------
+// --- Sending a step out -----------------------------------------------------------
 
-enum _Status { pending, done, skipped }
+/// Opens Instagram (or Facebook) on the current step of the publishing
+/// session, with its photos (reshaped for a post, or laid out for a story)
+/// and the caption. [busy] says what's under way. Returns what went wrong,
+/// or null.
+Future<String?> openStep(UploadStore uploads, ScaffoldMessengerState messenger, {ValueChanged<String?>? busy}) async {
+  final session = uploads.session;
+  final step = session?.step;
+  if (session == null || step == null) return null;
+  final app = step.kind == StepKind.facebookPost ? SocialApp.facebook : SocialApp.instagram;
+  final name = app == SocialApp.facebook ? 'Facebook' : 'Instagram';
+  try {
+    final List<String> paths;
+    switch (step.kind) {
+      case StepKind.instagramStory:
+        busy?.call('Getting The Story Ready…');
+        paths = [await _storyFile(step.items.single)];
+      case StepKind.instagramPost:
+        busy?.call(step.items.length == 1 ? 'Getting The Photo Ready…' : 'Getting The Photos Ready…');
+        paths = await _postFiles(step.items, session.fit);
+      case StepKind.facebookPost:
+        paths = [for (final i in step.items) i.previewPath];
+    }
+    // An Instagram post gets the caption typed in by the helper when it's on; otherwise it's copied for pasting.
+    final caption = step.kind == StepKind.instagramStory ? '' : uploads.caption.trim();
+    final typed =
+        step.kind == StepKind.instagramPost &&
+        caption.isNotEmpty &&
+        await AppChannel.instance.captionHelperOn().catchError((Object _) => false);
+    if (caption.isNotEmpty && !typed) await copyCaption(messenger, caption);
+    busy?.call('Opening $name…');
+    final kind = step.kind == StepKind.instagramStory ? ShareKind.story : ShareKind.feed;
+    switch (await ShareChannel.instance.share(app, kind, paths, caption: typed ? caption : null)) {
+      case ShareOutcome.launched:
+      case ShareOutcome.chooser:
+        return null;
+      case ShareOutcome.noMultiple:
+        // One post at a time, then (the step now holds a single photo, so this doesn't repeat).
+        session.splitCurrent();
+        await uploads.setSession(session);
+        messenger.showSnackBar(
+          SnackBar(content: Text('$name won\'t take several photos at once here, so they go one post at a time.')),
+        );
+        return await openStep(uploads, messenger, busy: busy);
+      case ShareOutcome.notInstalled:
+        return '$name Isn\'t Installed.';
+    }
+  } catch (e) {
+    busy?.call(null);
+    return 'Couldn\'t Open $name: $e';
+  }
+}
 
-/// Goes through the plan one step at a time: open Instagram (or Facebook)
-/// with the photos, come back, say whether it posted. Photos whose posts or
-/// stories went out are marked as posted when this screen closes.
+/// [path] without its .jpg, for naming the copies made from it.
+String _stem(String path) => path.replaceFirst(RegExp(r'\.jpg$'), '');
+
+/// The photo at [path], decoded at most [maxEdge] px on its long side.
+Future<ui.Image> _decode(String path, {int maxEdge = 2160}) async {
+  final buffer = await ui.ImmutableBuffer.fromUint8List(await File(path).readAsBytes());
+  final descriptor = await ui.ImageDescriptor.encoded(buffer);
+  final wide = descriptor.width >= descriptor.height;
+  final big = (wide ? descriptor.width : descriptor.height) > maxEdge;
+  final codec = await descriptor.instantiateCodec(
+    targetWidth: big && wide ? maxEdge : null,
+    targetHeight: big && !wide ? maxEdge : null,
+  );
+  final frame = await codec.getNextFrame();
+  codec.dispose();
+  descriptor.dispose();
+  buffer.dispose();
+  return frame.image;
+}
+
+Future<void> _saveJpeg(ui.Image image, String path) async {
+  final rgba = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+  await CardChannel.instance.encodeJpeg(rgba!.buffer.asUint8List(), image.width, image.height, path);
+}
+
+/// The story version of [item]: 9:16 over a blurred copy of itself. Made once, then reused.
+Future<String> _storyFile(UploadItem item) async {
+  final path = '${_stem(item.previewPath)}-story.jpg';
+  if (await File(path).exists()) return path;
+  final photo = await _decode(item.previewPath);
+  final story = await renderStory(photo);
+  photo.dispose();
+  await _saveJpeg(story, path);
+  story.dispose();
+  return path;
+}
+
+/// The files for one post of [items]: each in the first one's shape (within
+/// Instagram's limits), reshaped by [fit] where it isn't already. Made once, then reused.
+Future<List<String>> _postFiles(List<UploadItem> items, PostFit fit) async {
+  final aspects = [for (final i in items) i.aspect ?? await photoAspect(i.previewPath)];
+  final first = aspects.first;
+  if (first == null) return [for (final i in items) i.previewPath];
+  final target = postAspect([first]);
+  return [
+    for (final (n, item) in items.indexed)
+      if (aspects[n] case final a? when needsReshape(a, target))
+        await _reshapedFile(item, target, fit)
+      else
+        item.previewPath,
+  ];
+}
+
+Future<String> _reshapedFile(UploadItem item, double target, PostFit fit) async {
+  final path = '${_stem(item.previewPath)}-post-${fit.name}-${(target * 1000).round()}.jpg';
+  if (await File(path).exists()) return path;
+  final photo = await _decode(item.previewPath);
+  final out = await renderReshaped(photo, target, fit);
+  photo.dispose();
+  await _saveJpeg(out, path);
+  out.dispose();
+  return path;
+}
+
+// --- "Did It Post?" -----------------------------------------------------------------
+
+/// Comes up when ShotDrop is back in front while a round of publishing is
+/// out in Instagram (even after ShotDrop was closed meanwhile): did the
+/// current post or story go out? Yes sends the next one straight out; Do It
+/// Later keeps the rest in the Upload folder. Photos that went out are
+/// marked posted.
 class PublishScreen extends StatefulWidget {
-  const PublishScreen({super.key, required this.steps, required this.mode});
-  final List<PublishStep> steps;
-  final PublishMode mode;
+  const PublishScreen({super.key});
+
+  static bool _showing = false;
+
+  /// Shows it if a round of publishing is waiting on it, and it isn't up already.
+  static void showIfPending(BuildContext context) {
+    if (_showing || AppScope.of(context).uploads.session == null) return;
+    _showing = true;
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const PublishScreen())).whenComplete(() => _showing = false);
+  }
 
   @override
   State<PublishScreen> createState() => _PublishScreenState();
 }
 
 class _PublishScreenState extends State<PublishScreen> {
-  late final _steps = [...widget.steps];
-  late final _status = [for (final _ in widget.steps) _Status.pending];
-  late final _uploads = AppScope.of(context).uploads;
-  int _current = 0;
-  bool _opened = false; // the current step has been sent out at least once
+  late final _scope = AppScope.of(context);
+  late final _uploads = _scope.uploads;
+  PublishSession? _ended; // once it's over: what went out, for the summary
   String? _busy;
 
-  bool get _finished => _current >= _steps.length;
-
-  Set<String> get _postedIds => {
-    for (var i = 0; i < _steps.length; i++)
-      if (_status[i] == _Status.done && _steps[i].kind != StepKind.facebookPost)
-        for (final item in _steps[i].items) item.shotId,
-  };
-
-  bool _helperOn = false; // caption auto-paste is switched on
-
-  Future<bool> _helper() async {
-    final on = await AppChannel.instance.captionHelperOn().catchError((Object _) => false);
-    if (mounted && on != _helperOn) setState(() => _helperOn = on);
-    return on;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _helper();
-  }
-
-  @override
-  void dispose() {
-    final ids = _postedIds;
-    _uploads.finishPublishing(ids);
-    super.dispose();
-  }
-
   Future<void> _open() async {
-    final step = _steps[_current];
     final messenger = ScaffoldMessenger.of(context);
-    try {
-      List<String> paths;
-      if (step.kind == StepKind.instagramStory) {
-        setState(() => _busy = 'Getting The Story Ready…');
-        paths = [await _storyFile(step.items.single)];
-      } else {
-        paths = [for (final i in step.items) i.previewPath];
-      }
-      // An Instagram post gets the caption typed in by the helper when it's on; otherwise it's copied for pasting.
-      final caption = step.kind == StepKind.instagramStory ? '' : _uploads.caption.trim();
-      final typed = step.kind == StepKind.instagramPost && caption.isNotEmpty && await _helper();
-      if (caption.isNotEmpty && !typed) await copyCaption(messenger, caption);
-      setState(() => _busy = null);
-      final app = step.kind == StepKind.facebookPost ? SocialApp.facebook : SocialApp.instagram;
-      final kind = step.kind == StepKind.instagramStory ? ShareKind.story : ShareKind.feed;
-      switch (await ShareChannel.instance.share(app, kind, paths, caption: typed ? caption : null)) {
-        case ShareOutcome.launched:
-        case ShareOutcome.chooser:
-          setState(() => _opened = true);
-        case ShareOutcome.noMultiple:
-          _splitCurrent();
-          messenger.showSnackBar(
-            SnackBar(
-              content: Text(
-                '${app == SocialApp.facebook ? 'Facebook' : 'Instagram'} won\'t take several photos at '
-                'once here, so they\'ll go one post at a time.',
-              ),
-            ),
-          );
-        case ShareOutcome.notInstalled:
-          messenger.showSnackBar(
-            SnackBar(content: Text('${app == SocialApp.facebook ? 'Facebook' : 'Instagram'} isn\'t installed.')),
-          );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = null);
-      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t Open It: $e')));
+    final error = await openStep(_uploads, messenger, busy: (b) => mounted ? setState(() => _busy = b) : null);
+    if (mounted) setState(() => _busy = null);
+    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
+  }
+
+  Future<void> _posted() async {
+    final s = _uploads.session;
+    if (s == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _busy = 'Getting Ready…');
+    s.resolve(StepStatus.done);
+    if (s.finished) return _finish(s);
+    await _uploads.setSession(s);
+    await _open(); // the next one goes straight out
+  }
+
+  Future<void> _later() async {
+    final s = _uploads.session;
+    if (s == null) return Navigator.of(context).pop();
+    s.stop();
+    await _finish(s);
+  }
+
+  Future<void> _finish(PublishSession s) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    await _uploads.finishPublishing(s.postedIds, later: s.laterIds);
+    if (_scope.settings.autoTidy) tidyStorage(_uploads, _scope.settings).ignore();
+    if (!mounted) return;
+    if (s.postedIds.isEmpty) {
+      navigator.pop();
+      messenger.showSnackBar(const SnackBar(content: Text('Kept In The Upload Folder For Later')));
+    } else {
+      setState(() => _ended = s);
     }
   }
 
-  /// The story version of [item]: 9:16 over a blurred copy of itself. Made once, then reused.
-  Future<String> _storyFile(UploadItem item) async {
-    final path = item.previewPath.replaceFirst(RegExp(r'\.jpg$'), '-story.jpg');
-    if (await File(path).exists()) return path;
-    final buffer = await ui.ImmutableBuffer.fromUint8List(await File(item.previewPath).readAsBytes());
-    final descriptor = await ui.ImageDescriptor.encoded(buffer);
-    final frame = await (await descriptor.instantiateCodec()).getNextFrame();
-    final story = await renderStory(frame.image);
-    frame.image.dispose();
-    final rgba = await story.toByteData(format: ui.ImageByteFormat.rawRgba);
-    await CardChannel.instance.encodeJpeg(rgba!.buffer.asUint8List(), story.width, story.height, path);
-    story.dispose();
-    return path;
-  }
-
-  /// Replaces the current multi-photo step with one step per photo.
-  void _splitCurrent() {
-    final step = _steps[_current];
-    setState(() {
-      _steps.replaceRange(_current, _current + 1, [
-        for (final i in step.items) PublishStep(step.kind, [i]),
-      ]);
-      _status.replaceRange(_current, _current + 1, [for (final _ in step.items) _Status.pending]);
-    });
-  }
-
-  void _resolve(_Status s) {
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _status[_current] = s;
-      _current++;
-      _opened = false;
-    });
-  }
-
-  Future<bool> _confirmLeave() async {
-    if (_finished || _status.every((s) => s == _Status.pending)) return true;
-    final leave = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Stop publishing?'),
-        content: const Text('What you\'ve posted so far is saved. The rest stays in the Upload folder.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep Going')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Stop')),
-        ],
-      ),
-    );
-    return leave == true;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final social = AppScope.of(context).social;
-    final done = _status.where((s) => s != _Status.pending).length;
+    final social = _scope.social;
     return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final navigator = Navigator.of(context);
-        if (await _confirmLeave()) navigator.pop();
+      canPop: _ended != null,
+      // Back without answering: the same as Do It Later.
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _busy == null) _later();
       },
       child: Scaffold(
         appBar: AppBar(
+          automaticallyImplyLeading: _ended != null,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_finished ? 'All Done' : 'Publishing'),
-              Text(
-                '${widget.mode.label}${social.handle.isEmpty ? '' : ' · @${social.handle}'}',
-                style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
-              ),
+              Text(_ended != null ? 'All Done' : 'Publishing'),
+              if (social.handle.isNotEmpty)
+                Text(
+                  '@${social.handle}',
+                  style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                ),
             ],
           ),
         ),
-        body: _finished ? _summary() : _walkthrough(done),
-      ),
-    );
-  }
-
-  Widget _walkthrough(int done) => ListView(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-    children: [
-      ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: done / _steps.length),
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOutCubic,
-          builder: (context, v, _) =>
-              LinearProgressIndicator(value: v, minHeight: 6, backgroundColor: line, color: accent),
-        ),
-      ),
-      const SizedBox(height: 8),
-      Text('Step ${_current + 1} Of ${_steps.length}', style: sectionLabel),
-      const SizedBox(height: 12),
-      for (var i = 0; i < _steps.length; i++)
-        i == _current ? _currentCard(_steps[i]) : _StepRow(step: _steps[i], status: _status[i], index: i),
-    ],
-  );
-
-  Widget _currentCard(PublishStep step) {
-    final facebook = step.kind == StepKind.facebookPost;
-    final appName = facebook ? 'Facebook' : 'Instagram';
-    final story = step.kind == StepKind.instagramStory;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent, width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              _KindIcon(kind: step.kind, active: true),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(step.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _Thumbs(items: step.items, story: story),
-          const SizedBox(height: 12),
-          Text(
-            _opened
-                ? 'Did it post? Tap ${facebook ? 'Post' : 'Share'} in $appName, then come back here.'
-                : story
-                ? 'Instagram opens its story editor with this photo. Add stickers or text if you like, then tap Your story.'
-                : facebook
-                ? 'Facebook opens a new post with ${step.items.length == 1 ? 'this photo' : 'these photos'}. Paste the caption and tap Post.'
-                : 'Instagram opens a new post with ${step.items.length == 1 ? 'this photo' : 'these photos'}. '
-                      '${_uploads.caption.trim().isEmpty ? 'Tap Share.' : _helperOn ? 'ShotDrop types the caption in for you; check it, then tap Share.' : 'The caption is copied: long-press the caption box and tap Paste, then Share.'}',
-            style: const TextStyle(fontSize: 13, color: muted, height: 1.45),
-          ),
-          if (step.kind == StepKind.instagramPost && !_opened && !_helperOn && _uploads.caption.trim().isNotEmpty)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                onPressed: () async {
-                  await Navigator.of(
-                    context,
-                  ).push(MaterialPageRoute<void>(builder: (_) => const CaptionHelperScreen()));
-                  _helper();
+        body: _ended != null
+            ? _summary(_ended!)
+            : ListenableBuilder(
+                listenable: _uploads,
+                builder: (context, _) {
+                  final s = _uploads.session;
+                  final step = s?.step;
+                  return s == null || step == null ? const SizedBox.shrink() : _question(s, step);
                 },
-                icon: const Icon(Icons.content_paste_go_rounded, size: 18),
-                label: const Text('Have ShotDrop Type The Caption In'),
               ),
-            ),
-          const SizedBox(height: 14),
-          if (_busy != null)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-                const SizedBox(width: 10),
-                Text(_busy!, style: const TextStyle(fontWeight: FontWeight.w700)),
-              ],
-            )
-          else if (!_opened) ...[
-            FilledButton.icon(
-              onPressed: _open,
-              icon: const Icon(Icons.open_in_new_rounded),
-              label: Text('Open $appName'),
-            ),
-            TextButton(onPressed: () => _resolve(_Status.skipped), child: const Text('Skip This One')),
-          ] else ...[
-            FilledButton.icon(
-              onPressed: () => _resolve(_Status.done),
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('Yes, It\'s Posted'),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(onPressed: _open, child: const Text('Open Again')),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(onPressed: () => _resolve(_Status.skipped), child: const Text('Skip')),
-                ),
-              ],
-            ),
-          ],
-        ],
       ),
     );
   }
 
-  Widget _summary() {
-    final ids = _postedIds;
-    final posts = _steps.indexed.where((e) => _status[e.$1] == _Status.done && e.$2.kind == StepKind.instagramPost);
-    final stories = _steps.indexed.where((e) => _status[e.$1] == _Status.done && e.$2.kind == StepKind.instagramStory);
-    final fbShares = AppScope.of(context).social.instagramSharesToFacebook;
-    final nothing = ids.isEmpty;
+  Widget _question(PublishSession s, PublishStep step) {
+    final appName = step.kind == StepKind.facebookPost ? 'Facebook' : 'Instagram';
+    final story = step.kind == StepKind.instagramStory;
+    final next = s.nextStep;
+    final done = s.status.where((x) => x != StepStatus.pending).length;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (s.steps.length > 1) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(end: done / s.steps.length),
+                  duration: const Duration(milliseconds: 400),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, v, _) =>
+                      LinearProgressIndicator(value: v, minHeight: 6, backgroundColor: line, color: accent),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('Step ${s.current + 1} Of ${s.steps.length}', style: sectionLabel),
+            ],
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      _Thumbs(items: step.items, story: story, large: true),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _KindIcon(kind: step.kind, active: true),
+                          const SizedBox(width: 10),
+                          Flexible(
+                            child: Text(step.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Did It Post?',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap Yes once ${story ? 'the story is up' : 'you\'ve tapped ${step.kind == StepKind.facebookPost ? 'Post' : 'Share'}'} '
+                        'in $appName. If $appName opened without the ${step.items.length == 1 ? 'photo' : 'photos'}, '
+                        'tap Open It In $appName.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13, color: muted, height: 1.45),
+                      ),
+                      if (next != null) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          'Next Up: ${next.title}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_busy != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    const SizedBox(width: 10),
+                    Text(_busy!, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              )
+            else ...[
+              FilledButton.icon(
+                onPressed: _posted,
+                icon: const Icon(Icons.check_rounded),
+                label: Text(next == null ? 'Yes, It\'s Posted' : 'Yes, Open The Next One'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _open,
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: Text('Open It In $appName'),
+              ),
+              TextButton(onPressed: _later, child: const Text('Do It Later')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summary(PublishSession s) {
+    final ids = s.postedIds;
+    int count(StepKind k) => s.steps.indexed.where((e) => s.status[e.$1] == StepStatus.done && e.$2.kind == k).length;
+    final posts = count(StepKind.instagramPost), stories = count(StepKind.instagramStory);
+    final later = s.laterIds.length;
     final counts = [
       '${ids.length} ${ids.length == 1 ? 'Photo' : 'Photos'}',
-      if (posts.isNotEmpty) '${posts.length} ${posts.length == 1 ? 'Post' : 'Posts'}',
-      if (stories.isNotEmpty) '${stories.length} ${stories.length == 1 ? 'Story' : 'Stories'}',
+      if (posts > 0) '$posts ${posts == 1 ? 'Post' : 'Posts'}',
+      if (stories > 0) '$stories ${stories == 1 ? 'Story' : 'Stories'}',
     ].join(' · ');
-    final facebook = fbShares ? '\nInstagram shares them to your Facebook too.' : '';
+    final facebook = _scope.social.instagramSharesToFacebook ? '\nInstagram shares them to your Facebook too.' : '';
+    final rest = later == 0 ? '' : '\n$later left in the Upload folder for later.';
     return StatePanel(
-      icon: nothing ? Icons.outbox_rounded : Icons.check_rounded,
-      iconWidget: nothing ? null : const _DoneBadge(),
-      title: nothing ? 'Nothing Was Posted' : 'Posted To Instagram',
-      body: nothing
-          ? 'Everything is still in the Upload folder for next time.'
-          : '$counts$facebook\nThe edited copies are now in Pictures/ShotDrop/Published.',
+      icon: Icons.check_rounded,
+      iconWidget: const _DoneBadge(),
+      title: 'Posted To Instagram',
+      body: '$counts$facebook$rest\nThe edited copies are now in Pictures/ShotDrop/Published.',
       actions: [
-        FilledButton(
-          onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst),
-          child: const Text('Back To The Card'),
-        ),
+        FilledButton(onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst), child: const Text('Done')),
       ],
     );
   }
-}
-
-class _StepRow extends StatelessWidget {
-  const _StepRow({required this.step, required this.status, required this.index});
-  final PublishStep step;
-  final _Status status;
-  final int index;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-    child: Row(
-      children: [
-        _KindIcon(kind: step.kind, active: false, status: status),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            step.title,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: status == _Status.pending ? ink : muted,
-              decoration: status == _Status.skipped ? TextDecoration.lineThrough : null,
-            ),
-          ),
-        ),
-        Text(
-          switch (status) {
-            _Status.pending => '',
-            _Status.done => 'Posted',
-            _Status.skipped => 'Skipped',
-          },
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: status == _Status.done ? positive : muted),
-        ),
-      ],
-    ),
-  );
 }
 
 class _KindIcon extends StatelessWidget {
-  const _KindIcon({required this.kind, required this.active, this.status = _Status.pending});
+  const _KindIcon({required this.kind, required this.active});
   final StepKind kind;
   final bool active;
-  final _Status status;
 
   @override
-  Widget build(BuildContext context) {
-    final icon = switch (status) {
-      _Status.done => Icons.check_rounded,
-      _Status.skipped => Icons.redo_rounded,
-      _Status.pending => switch (kind) {
-        StepKind.instagramPost => Icons.grid_on_rounded,
-        StepKind.instagramStory => Icons.amp_stories_rounded,
-        StepKind.facebookPost => Icons.facebook_rounded,
-      },
-    };
-    final bg = status == _Status.done
-        ? positive
-        : active
-        ? accent
-        : surfaceHigh;
-    final fg = status == _Status.done
-        ? const Color(0xFF06210F)
-        : active
-        ? onAccent
-        : muted;
-    return Container(
-      width: 36,
-      height: 36,
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(11)),
-      child: Icon(icon, size: 19, color: fg),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    width: 36,
+    height: 36,
+    decoration: BoxDecoration(color: active ? accent : surfaceHigh, borderRadius: BorderRadius.circular(11)),
+    child: Icon(switch (kind) {
+      StepKind.instagramPost => Icons.grid_on_rounded,
+      StepKind.instagramStory => Icons.amp_stories_rounded,
+      StepKind.facebookPost => Icons.facebook_rounded,
+    }, size: 19, color: active ? onAccent : muted),
+  );
 }
 
 class _Thumbs extends StatelessWidget {
-  const _Thumbs({required this.items, required this.story});
+  const _Thumbs({required this.items, required this.story, this.large = false});
   final List<UploadItem> items;
   final bool story;
+  final bool large; // "Did It Post?": a single photo shown whole, several in a bigger row
 
   @override
   Widget build(BuildContext context) {
-    final shown = items.take(5).toList();
+    if (large && items.length == 1) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 300),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Image.file(
+            File(items.single.previewPath),
+            fit: BoxFit.contain,
+            cacheWidth: 720,
+            errorBuilder: (_, _, _) => const SizedBox(width: 200, height: 250, child: ColoredBox(color: surfaceHigh)),
+          ),
+        ),
+      );
+    }
+    final shown = items.take(large ? 4 : 5).toList();
+    final side = large ? 76.0 : 64.0;
     return SizedBox(
-      height: story ? 96 : 64,
+      height: story ? side * 1.5 : side,
       child: Row(
+        mainAxisAlignment: large ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
           for (final (i, item) in shown.indexed)
             Padding(
@@ -643,8 +693,8 @@ class _Thumbs extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: SizedBox(
-                  width: story ? 54 : 64,
-                  height: story ? 96 : 64,
+                  width: story ? side * 0.84 : side,
+                  height: story ? side * 1.5 : side,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [

@@ -279,7 +279,10 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     private fun thumbnail(uri: Uri, key: String, maxEdge: Int, fast: Boolean): String? {
         val dir = File(activity.cacheDir, "thumbs").apply { mkdirs() }
         val file = File(dir, sha1("$key|$maxEdge|$fast") + ".jpg")
-        if (file.exists() && file.length() > 0) return file.absolutePath
+        if (file.exists() && file.length() > 0) {
+            file.setLastModified(System.currentTimeMillis()) // used: the storage tidy-up keeps it longer
+            return file.absolutePath
+        }
         val bitmap = (if (fast) decodeExifThumbnail(uri) else decodeUpright(uri, maxEdge)) ?: return null
         writeJpeg(bitmap, file, if (fast) 80 else 88)
         bitmap.recycle()

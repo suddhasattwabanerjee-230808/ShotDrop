@@ -1,12 +1,16 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../app_channel.dart';
+import '../storage.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
 import 'card_screen.dart';
+import 'publish_screen.dart';
 import 'selected_screen.dart';
 import 'settings_screen.dart';
 import 'upload_screen.dart';
@@ -35,24 +39,49 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   HomeTab _tab = HomeTab.gallery;
-  late final _updater = AppScope.of(context).updater;
+  late final _scope = AppScope.of(context);
+  late final _updater = _scope.updater;
   bool _toldUpdate = false;
+  Timer? _tidy;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    AppChannel.instance.cardPlugged.addListener(_onCardPlugged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updater.addListener(_onUpdate);
       _onUpdate();
+      // Closed while Instagram was open: ask now.
+      PublishScreen.showIfPending(context);
+    });
+    // Tidy up once the app has settled, out of the way of the first screens.
+    _tidy = Timer(const Duration(seconds: 8), () {
+      if (mounted && _scope.settings.autoTidy) tidyStorage(_scope.uploads, _scope.settings).ignore();
     });
   }
 
   @override
   void dispose() {
+    _tidy?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    AppChannel.instance.cardPlugged.removeListener(_onCardPlugged);
     _updater.removeListener(_onUpdate);
     super.dispose();
+  }
+
+  // Back from Instagram with a round of publishing out: "Did It Post?"
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) PublishScreen.showIfPending(context);
+  }
+
+  /// Opened by a card being plugged in: show its photos.
+  void _onCardPlugged() {
+    _go(HomeTab.gallery);
+    _scope.card.refresh();
   }
 
   void _go(HomeTab tab) {

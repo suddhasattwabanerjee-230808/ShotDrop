@@ -99,6 +99,7 @@ class ShareChannel(private val activity: Activity, messenger: BinaryMessenger) :
             if (pick != null) {
                 intent.setClassName(pick.packageName, pick.name)
                 activity.startActivity(intent)
+                if (pkg == INSTAGRAM && CaptionService.isOn(activity)) CaptionService.watchShare(intent)
                 "launched"
             } else {
                 activity.startActivity(Intent.createChooser(intent, null))

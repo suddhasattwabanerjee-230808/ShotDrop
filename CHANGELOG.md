@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0] - 2026-10-22 (build 10)
+
+Straight to Instagram, a real crop, and tidier storage.
+
+- **Crop like Instagram.** The frame stays put in the middle; drag the photo to move it and pinch to zoom. What's outside the frame is cut off, and nothing gets squeezed. Drag a corner to change the frame itself.
+- **Posts in the right shape.** Photos outside Instagram's 4:5 to 1.91:1 (like the D5600's 2:3 portraits), and carousels with mixed shapes, are sent in a shape Instagram takes. Pick Crop To Fit or Add Borders on the Publish sheet; the default is in Settings.
+- **Start opens Instagram right away** with the photos and caption. "Did It Post?" comes up when you come back to ShotDrop, even if it was closed meanwhile. Yes sends the next post or story straight out; Do It Later keeps the photos in the Upload folder.
+- **Instagram opening on its home feed:** when Instagram was closed in the background and opens without the photos, ShotDrop sends them again (with the caption helper on). Open It In Instagram does it by hand.
+- **Opens when a card is plugged in,** on the Gallery. Android may ask once whether ShotDrop should always open for the card reader. Switch it off in Settings.
+- **Storage looks after itself:** at launch and after publishing, ShotDrop clears copies nothing uses, copies of posted photos after a week (you choose: a day to never), old thumbnails, installed updates and old error notes. When the phone is low on space it tidies harder. Settings shows the space used and free, with Tidy Up Now.
+
 ## [0.5.3] - 2026-10-22 (build 9)
 
 Opens again.

@@ -51,6 +51,31 @@ object CrashLog {
         context.contentResolver.openOutputStream(uri)?.use { it.write(raw ?: (header + text).toByteArray()) }
     }
 
+    /**
+     * Deletes older notes: past the newest [keep], or older than [maxAgeDays].
+     * Only ShotDrop's own notes are visible to it. Returns the bytes freed.
+     */
+    fun tidy(context: Context, keep: Int = 10, maxAgeDays: Int = 30): Long {
+        val resolver = context.contentResolver
+        val cutoff = System.currentTimeMillis() / 1000 - maxAgeDays * 86400L
+        var freed = 0L
+        resolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DATE_ADDED, MediaStore.Downloads.SIZE),
+            "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?",
+            arrayOf("ShotDrop-crash-%"),
+            "${MediaStore.Downloads.DATE_ADDED} DESC",
+        )?.use { c ->
+            var n = 0
+            while (c.moveToNext()) {
+                if (n++ < keep && c.getLong(1) >= cutoff) continue
+                val uri = android.content.ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, c.getLong(0))
+                if (runCatching { resolver.delete(uri, null, null) }.getOrDefault(0) > 0) freed += c.getLong(2)
+            }
+        }
+        return freed
+    }
+
     /** If the previous run crashed (or froze), says why, once. */
     fun reportLastExit(context: Context) {
         if (Build.VERSION.SDK_INT < 30) return

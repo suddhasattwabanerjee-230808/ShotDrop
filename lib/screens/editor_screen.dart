@@ -635,34 +635,33 @@ class _ImagePainter extends CustomPainter {
   bool shouldRepaint(_ImagePainter old) => old.image != image;
 }
 
-/// The whole photo (rotated, straightened, coloured) with the crop frame over it.
-class _OrientedPainter extends CustomPainter {
-  _OrientedPainter(this.image, this.params, this.rect, {this.finished});
+/// The crop view: the whole photo (rotated, straightened, coloured) at
+/// [photo] on screen, the frame over it, and outside the frame dimmed by
+/// [dim] (all but hidden at rest; see-through while moving, to show what
+/// could come in).
+class _CropPainter extends CustomPainter {
+  _CropPainter(this.image, this.params, this.photo, this.frame, this.dim, {this.finished, this.guides = false});
   final ui.Image image;
   final EditParams params;
-  final Rect rect;
+  final Rect photo, frame;
+  final double dim; // 0..1
   final ui.Image? finished; // the cropped photo for exactly this crop: shown with the body edits inside the frame
+  final bool guides; // thirds, while moving
 
   @override
   void paint(Canvas canvas, Size size) {
     final o = orientedSize(Size(image.width.toDouble(), image.height.toDouble()), params);
     final matrix = matrixFor(params);
+    final screen = Offset.zero & size;
     canvas.save();
-    canvas.clipRect(rect);
-    if (!isIdentity(matrix)) canvas.saveLayer(rect, Paint()..colorFilter = ColorFilter.matrix(matrix));
-    canvas.translate(rect.left, rect.top);
-    canvas.scale(rect.width / o.width);
+    canvas.clipRect(screen);
+    if (!isIdentity(matrix)) canvas.saveLayer(screen, Paint()..colorFilter = ColorFilter.matrix(matrix));
+    canvas.translate(photo.left, photo.top);
+    canvas.scale(photo.width / o.width, photo.height / o.height);
     paintOriented(canvas, image, params, o);
     if (!isIdentity(matrix)) canvas.restore();
     canvas.restore();
 
-    final c = params.crop;
-    final frame = Rect.fromLTRB(
-      rect.left + c.left * rect.width,
-      rect.top + c.top * rect.height,
-      rect.left + c.right * rect.width,
-      rect.top + c.bottom * rect.height,
-    );
     // Inside the frame, the photo as it'll be saved: Slim, Stretch, Hip, Legs and colour.
     final done = finished;
     if (done != null) {
@@ -672,18 +671,19 @@ class _OrientedPainter extends CustomPainter {
       canvas.restore();
     }
 
-    // Dim outside the frame, then the frame, thirds and corner handles.
     canvas.drawPath(
-      Path.combine(PathOperation.difference, Path()..addRect(rect.inflate(1)), Path()..addRect(frame)),
-      Paint()..color = const Color(0xB3000000),
+      Path.combine(PathOperation.difference, Path()..addRect(screen.inflate(1)), Path()..addRect(frame)),
+      Paint()..color = Colors.black.withValues(alpha: dim),
     );
-    final thin = Paint()
-      ..color = const Color(0x80FFFFFF)
-      ..strokeWidth = 0.8;
-    for (var i = 1; i < 3; i++) {
-      final x = frame.left + frame.width * i / 3, y = frame.top + frame.height * i / 3;
-      canvas.drawLine(Offset(x, frame.top), Offset(x, frame.bottom), thin);
-      canvas.drawLine(Offset(frame.left, y), Offset(frame.right, y), thin);
+    if (guides) {
+      final thin = Paint()
+        ..color = const Color(0x80FFFFFF)
+        ..strokeWidth = 0.8;
+      for (var i = 1; i < 3; i++) {
+        final x = frame.left + frame.width * i / 3, y = frame.top + frame.height * i / 3;
+        canvas.drawLine(Offset(x, frame.top), Offset(x, frame.bottom), thin);
+        canvas.drawLine(Offset(frame.left, y), Offset(frame.right, y), thin);
+      }
     }
     canvas.drawRect(
       frame,
@@ -709,8 +709,14 @@ class _OrientedPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_OrientedPainter old) =>
-      old.image != image || old.params != params || old.rect != rect || old.finished != finished;
+  bool shouldRepaint(_CropPainter old) =>
+      old.image != image ||
+      old.params != params ||
+      old.photo != photo ||
+      old.frame != frame ||
+      old.dim != dim ||
+      old.finished != finished ||
+      old.guides != guides;
 }
 
 /// The cropped photo with the body tools and colour applied (the Adjust view).
@@ -744,7 +750,7 @@ class _CropStage extends StatefulWidget {
   });
   final ui.Image image;
   final EditParams params;
-  final ui.Image? finished; // see _OrientedPainter.finished
+  final ui.Image? finished; // see _CropPainter.finished
   final ValueChanged<EditParams> onLive;
   final void Function([EditParams?]) onCommit;
 
@@ -752,57 +758,159 @@ class _CropStage extends StatefulWidget {
   State<_CropStage> createState() => _CropStageState();
 }
 
-class _CropStageState extends State<_CropStage> {
+typedef _Layout = ({Rect photo, Rect frame});
+
+/// Cropping as in Instagram or Google Photos: the frame sits still in the
+/// middle, as big as it fits, and the photo moves under it: drag to move it,
+/// pinch to zoom. Dragging a corner changes the frame itself (its shape,
+/// unless a ratio is picked); let go and it grows back to fill the screen.
+/// Nothing is ever squeezed: what's outside the frame is simply cut off.
+class _CropStageState extends State<_CropStage> with SingleTickerProviderStateMixin {
+  late final _settle = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
+  _Layout? _shown; // what was drawn last
+  _Layout? _settleFrom; // where the settle animation starts
+  _Layout? _start; // at the start of a gesture
   Rect? _startCrop;
-  int? _corner; // null = moving the whole frame
-  Offset _total = Offset.zero;
+  int? _corner; // dragging this corner of the frame (null: moving the photo)
+  Offset _focal0 = Offset.zero, _total = Offset.zero;
+  bool _active = false;
+
+  @override
+  void dispose() {
+    _settle.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_CropStage old) {
+    super.didUpdateWidget(old);
+    // The crop jumped (a ratio, a turn, undo, a corner let go): glide there from what's shown.
+    if (!_active && old.params.crop != widget.params.crop && _shown != null) {
+      _settleFrom = _shown;
+      _settle.forward(from: 0);
+    }
+  }
+
+  Size get _o => orientedSize(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), widget.params);
+
+  static Rect _lerp(Rect a, Rect b, double t) => Rect.lerp(a, b, t)!;
+
+  _Layout _layoutFor(Size box) {
+    final target = cropLayout(_o, widget.params.crop, box);
+    final start = _start;
+    if (_corner != null && start != null) {
+      // The photo holds still while a corner is dragged; the frame follows the finger.
+      final c = widget.params.crop, p = start.photo;
+      return (
+        photo: p,
+        frame: Rect.fromLTRB(
+          p.left + c.left * p.width,
+          p.top + c.top * p.height,
+          p.left + c.right * p.width,
+          p.top + c.bottom * p.height,
+        ),
+      );
+    }
+    final from = _settleFrom;
+    if (from != null && _settle.isAnimating) {
+      final t = Curves.easeOutCubic.transform(_settle.value);
+      return (photo: _lerp(from.photo, target.photo, t), frame: _lerp(from.frame, target.frame, t));
+    }
+    return target;
+  }
+
+  void _onStart(ScaleStartDetails d, Size box) {
+    final shown = _shown ?? cropLayout(_o, widget.params.crop, box);
+    _settle.stop();
+    _start = shown;
+    _startCrop = widget.params.crop;
+    _focal0 = d.localFocalPoint;
+    _total = Offset.zero;
+    _corner = null;
+    if (d.pointerCount == 1) {
+      final f = shown.frame;
+      var best = 44.0;
+      for (final (i, c) in [f.topLeft, f.topRight, f.bottomRight, f.bottomLeft].indexed) {
+        final dist = (c - d.localFocalPoint).distance;
+        if (dist < best) {
+          best = dist;
+          _corner = i;
+        }
+      }
+    }
+    setState(() => _active = true);
+  }
+
+  void _onUpdate(ScaleUpdateDetails d, Size box) {
+    final start = _start, crop0 = _startCrop;
+    if (start == null || crop0 == null) return;
+    final p = widget.params;
+    final corner = _corner;
+    if (corner == null) {
+      widget.onLive(
+        p.copyWith(
+          crop: panZoomCrop(
+            photo: start.photo,
+            frame: start.frame,
+            focal0: _focal0,
+            focal: d.localFocalPoint,
+            scale: d.scale,
+          ),
+        ),
+      );
+      return;
+    }
+    // A corner: keep the finger on the screen, then move it in photo terms.
+    final f0 = [start.frame.topLeft, start.frame.topRight, start.frame.bottomRight, start.frame.bottomLeft][corner];
+    final room = Rect.fromLTRB(8, 8, box.width - 8, box.height - 8);
+    _total += d.focalPointDelta;
+    final at = Offset(
+      (f0.dx + _total.dx).clamp(room.left, room.right),
+      (f0.dy + _total.dy).clamp(room.top, room.bottom),
+    );
+    final delta = Offset((at.dx - f0.dx) / start.photo.width, (at.dy - f0.dy) / start.photo.height);
+    widget.onLive(p.copyWith(crop: resizeCrop(crop0, corner, delta, normalizedRatio(_o, _ratio(p, _o)))));
+  }
+
+  void _onEnd() {
+    _settleFrom = _shown;
+    _start = null;
+    _startCrop = null;
+    _corner = null;
+    setState(() => _active = false);
+    _settle.forward(from: 0);
+    widget.onCommit();
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
-      final o = orientedSize(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), widget.params);
-      final rect = fitRect(o, box.biggest, pad: 28, top: 56);
+      final size = box.biggest;
       return GestureDetector(
-        onPanStart: (d) {
-          final c = widget.params.crop;
-          final frame = Rect.fromLTRB(
-            rect.left + c.left * rect.width,
-            rect.top + c.top * rect.height,
-            rect.left + c.right * rect.width,
-            rect.top + c.bottom * rect.height,
-          );
-          final corners = [frame.topLeft, frame.topRight, frame.bottomRight, frame.bottomLeft];
-          int? hit;
-          var best = 40.0;
-          for (var i = 0; i < 4; i++) {
-            final dist = (corners[i] - d.localPosition).distance;
-            if (dist < best) {
-              best = dist;
-              hit = i;
-            }
-          }
-          _corner = hit;
-          _startCrop = c;
-          _total = Offset.zero;
-        },
-        onPanUpdate: (d) {
-          final start = _startCrop;
-          if (start == null) return;
-          _total += Offset(d.delta.dx / rect.width, d.delta.dy / rect.height);
-          final p = widget.params;
-          final corner = _corner;
-          final crop = corner == null
-              ? moveCrop(start, _total)
-              : resizeCrop(start, corner, _total, normalizedRatio(o, _ratio(p, o)));
-          widget.onLive(p.copyWith(crop: crop));
-        },
-        onPanEnd: (_) {
-          _startCrop = null;
-          widget.onCommit();
-        },
-        child: CustomPaint(
-          painter: _OrientedPainter(widget.image, widget.params, rect, finished: widget.finished),
-          size: Size.infinite,
+        onScaleStart: (d) => _onStart(d, size),
+        onScaleUpdate: (d) => _onUpdate(d, size),
+        onScaleEnd: (_) => _onEnd(),
+        child: AnimatedBuilder(
+          animation: _settle,
+          builder: (context, _) {
+            final layout = _shown = _layoutFor(size);
+            return TweenAnimationBuilder<double>(
+              tween: Tween(end: _active ? 0.55 : 0.9),
+              duration: const Duration(milliseconds: 220),
+              builder: (context, dim, _) => CustomPaint(
+                painter: _CropPainter(
+                  widget.image,
+                  widget.params,
+                  layout.photo,
+                  layout.frame,
+                  dim,
+                  finished: _active || _settle.isAnimating ? null : widget.finished,
+                  guides: _active,
+                ),
+                size: Size.infinite,
+              ),
+            );
+          },
         ),
       );
     },

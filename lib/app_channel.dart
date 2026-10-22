@@ -3,13 +3,21 @@ import 'package:flutter/services.dart';
 
 enum InstallOutcome { started, needsPermission }
 
-/// The app itself (AppChannel.kt): its version, installing an update, and
-/// the caption helper's switch in Accessibility settings.
+/// The app itself (AppChannel.kt): its version, installing an update, the
+/// caption helper's switch in Accessibility settings, saved settings, and
+/// storage.
 class AppChannel {
-  AppChannel._();
+  AppChannel._() {
+    _m.setMethodCallHandler((call) async {
+      if (call.method == 'cardPlugged') cardPlugged.value++;
+    });
+  }
   static final instance = AppChannel._();
 
   static const _m = MethodChannel('shotdrop/app');
+
+  /// Goes up each time ShotDrop is opened by a card being plugged in.
+  final cardPlugged = ValueNotifier<int>(0);
 
   Future<({String name, int code})> version() async {
     final r = await _m.invokeMapMethod<String, Object?>('version') ?? const {};
@@ -37,6 +45,12 @@ class AppChannel {
 
   /// Saves one setting ([value] null removes it).
   Future<void> setPref(String key, Object? value) => _m.invokeMethod('setPref', {'key': key, 'value': value});
+
+  /// Bytes free on the phone's storage.
+  Future<int> freeSpace() async => await _m.invokeMethod<int>('freeSpace') ?? -1;
+
+  /// Deletes ShotDrop's older error notes from Download; returns the bytes freed.
+  Future<int> tidyNotes() async => await _m.invokeMethod<int>('tidyNotes') ?? 0;
 
   /// Notes an error in Download (ShotDrop-crash-…-dart.txt).
   Future<void> logError(String text) => _m.invokeMethod('logError', {'text': text});

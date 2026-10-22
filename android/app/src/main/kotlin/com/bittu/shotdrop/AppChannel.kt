@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.StatFs
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.plugin.common.BinaryMessenger
@@ -30,6 +31,9 @@ class AppChannel(private val activity: Activity, messenger: BinaryMessenger) : M
 
     fun dispose() = channel.setMethodCallHandler(null)
 
+    /** Tells the Flutter side ShotDrop was opened by a card being plugged in. */
+    fun cardPlugged() = channel.invokeMethod("cardPlugged", null)
+
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
@@ -45,6 +49,7 @@ class AppChannel(private val activity: Activity, messenger: BinaryMessenger) : M
                         else -> edit.putString(key, v.toString())
                     }
                     edit.apply()
+                    if (key == CardPlugReceiver.SETTING) CardPlugReceiver.setEnabled(activity, call.argument<Boolean>("value") ?: true)
                     result.success(null)
                 }
                 // A Dart error (the app keeps going): noted in Download like a crash.
@@ -52,6 +57,8 @@ class AppChannel(private val activity: Activity, messenger: BinaryMessenger) : M
                     CrashLog.write(activity, call.argument<String>("text") ?: "", suffix = "-dart.txt")
                     result.success(null)
                 }
+                "freeSpace" -> result.success(StatFs(activity.filesDir.path).availableBytes)
+                "tidyNotes" -> result.success(CrashLog.tidy(activity))
                 "version" -> {
                     val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
                     result.success(mapOf("name" to info.versionName, "code" to info.longVersionCode))

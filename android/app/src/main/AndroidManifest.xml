@@ -29,6 +29,25 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Opens ShotDrop when a card reader is plugged in (switched off with the setting). -->
+        <activity-alias
+            android:name=".OpenOnCard"
+            android:targetActivity=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/card_readers" />
+        </activity-alias>
+        <!-- And once the card is mounted, for phones where the reader doesn't open it. -->
+        <receiver android:name=".CardPlugReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_MOUNTED" />
+                <data android:scheme="file" />
+            </intent-filter>
+        </receiver>
         <!-- Shares edited photos (files in the app's own storage) with Instagram / Facebook. -->
         <provider
             android:name="androidx.core.content.FileProvider"

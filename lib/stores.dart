@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'app_channel.dart';
 import 'card_channel.dart';
 import 'models.dart';
+import 'publish.dart';
 import 'share_channel.dart';
 
 /// The app's saved settings, kept by Android (AppChannel, its own
@@ -185,6 +186,7 @@ class UploadStore extends ChangeNotifier {
   List<UploadItem> items = [];
   String caption = '';
   int copying = 0; // photos still being copied off the card into Selected
+  PublishSession? session; // a round of publishing still waiting on "Did It Post?"
 
   Future<Directory> get dir async => _dir ??= await getApplicationSupportDirectory();
   Future<File> get _file async => File('${(await dir).path}/upload_queue.json');
@@ -222,6 +224,8 @@ class UploadStore extends ChangeNotifier {
       final j = jsonDecode(await f.readAsString()) as Map<String, Object?>;
       items = [for (final m in j['items'] as List) UploadItem.fromJson((m as Map).cast<String, Object?>())];
       caption = j['caption'] as String? ?? '';
+      final sj = j['session'];
+      session = sj is Map ? PublishSession.fromJson(sj.cast<String, Object?>(), byShot) : null;
       notifyListeners();
     } catch (e) {
       debugPrint('Upload folder unreadable, starting empty: $e');
@@ -236,6 +240,7 @@ class UploadStore extends ChangeNotifier {
       jsonEncode({
         'items': [for (final i in items) i.toJson()],
         'caption': caption,
+        'session': ?session?.toJson(),
       }),
     );
     await tmp.rename(f.path);
@@ -353,22 +358,34 @@ class UploadStore extends ChangeNotifier {
     await _save();
   }
 
+  /// Starts (or with null, forgets) a round of publishing, saved so it's
+  /// still there if ShotDrop is closed while Instagram is open.
+  Future<void> setSession(PublishSession? s) async {
+    session = s;
+    notifyListeners();
+    await _save();
+  }
+
   /// After a round of publishing: [posted] photos are marked posted (the grid
-  /// shows POSTED; their gallery copies move to Pictures/ShotDrop/Published),
-  /// and whatever else was in the Upload folder goes back to Selected, with
-  /// its edit, to post later. Nothing moves if nothing was posted.
-  Future<void> finishPublishing(Iterable<String> posted) async {
-    final ids = posted.toSet();
-    if (ids.isEmpty) return;
-    items = [
-      for (final i in items)
-        ids.contains(i.shotId)
-            ? i.copyWith(status: ItemStatus.published)
-            : i.status == ItemStatus.queued
-            ? i.copyWith(status: ItemStatus.selected)
-            : i,
-    ];
-    caption = '';
+  /// shows POSTED; their gallery copies move to Pictures/ShotDrop/Published).
+  /// Photos left for [later] stay in the Upload folder, with the caption;
+  /// whatever else was there goes back to Selected, with its edit. Nothing
+  /// moves if nothing was posted.
+  Future<void> finishPublishing(Iterable<String> posted, {Iterable<String> later = const []}) async {
+    final ids = posted.toSet(), keep = later.toSet();
+    session = null;
+    if (ids.isNotEmpty) {
+      final now = DateTime.now();
+      items = [
+        for (final i in items)
+          ids.contains(i.shotId)
+              ? i.copyWith(status: ItemStatus.published, postedAt: now)
+              : i.status == ItemStatus.queued && !keep.contains(i.shotId)
+              ? i.copyWith(status: ItemStatus.selected)
+              : i,
+      ];
+      if (queued.isEmpty) caption = '';
+    }
     notifyListeners();
     await _save();
     for (final i in items) {
@@ -379,18 +396,54 @@ class UploadStore extends ChangeNotifier {
     }
   }
 
-  /// Deletes the copies kept for posted photos (they stay marked POSTED).
-  /// Returns how many bytes that freed.
-  Future<int> clearPosted() async {
+  /// Deletes the copies kept for posted photos (they stay marked POSTED);
+  /// with [before], only of photos posted before then. Returns the bytes freed.
+  Future<int> clearPosted({DateTime? before}) async {
     var freed = 0;
     for (final i in items) {
       if (!i.published) continue;
-      for (final path in [i.sourcePath, ?i.exportPath]) {
-        final f = File(path);
-        if (await f.exists()) {
-          freed += await f.length();
-          await f.delete().catchError((Object _) => f);
+      final files = [File(i.sourcePath), if (i.exportPath case final e?) File(e)];
+      if (before != null) {
+        // Posted before 0.6.0 (no date kept): when its newest copy was made.
+        var at = i.postedAt;
+        if (at == null) {
+          for (final f in files) {
+            final m = await f.lastModified().then<DateTime?>((m) => m, onError: (Object _) => null);
+            if (m != null && (at == null || m.isAfter(at))) at = m;
+          }
         }
+        if (at == null || at.isAfter(before)) continue;
+      }
+      for (final f in files) {
+        freed += await deleteFile(f);
+      }
+    }
+    return freed;
+  }
+
+  /// Deletes files in the Upload folder's storage that nothing uses any more:
+  /// copies of photos that are gone, and the story and reshaped copies made
+  /// for publishing once it's over. Leaves anything made in the last hour
+  /// (an edit being saved). Returns the bytes freed.
+  Future<int> clearUnused() async {
+    final used = {
+      for (final i in items) ...[i.sourcePath, ?i.exportPath],
+    };
+    // While publishing, the copies made for it are still needed.
+    final stems = [
+      for (final step in session?.steps ?? const <PublishStep>[])
+        for (final i in step.items) i.previewPath.replaceFirst(RegExp(r'\.jpg$'), '-'),
+    ];
+    final cutoff = DateTime.now().subtract(const Duration(hours: 1));
+    var freed = 0;
+    for (final sub in ['sources', 'uploads']) {
+      final d = Directory('${(await dir).path}/$sub');
+      if (!await d.exists()) continue;
+      await for (final e in d.list(followLinks: false)) {
+        if (e is! File || used.contains(e.path) || stems.any(e.path.startsWith)) continue;
+        final m = await e.lastModified().then<DateTime?>((m) => m, onError: (Object _) => null);
+        if (m == null || m.isAfter(cutoff)) continue;
+        freed += await deleteFile(e);
       }
     }
     return freed;
@@ -399,6 +452,17 @@ class UploadStore extends ChangeNotifier {
   Future<void> setCaption(String text) async {
     caption = text;
     await _save();
+  }
+
+  /// Deletes [f] if it's there; returns its size.
+  static Future<int> deleteFile(File f) async {
+    try {
+      final n = await f.length();
+      await f.delete();
+      return n;
+    } catch (_) {
+      return 0;
+    }
   }
 
   static void _deleteQuietly(String path) {
@@ -451,7 +515,11 @@ class AppSettings extends ChangeNotifier {
   int saveEdge = 2160; // long edge of saved edits, in pixels (1080 = Instagram's own size)
   bool galleryCopy = true; // also put edits in Pictures/ShotDrop
   String publishMode = 'post'; // a PublishMode name: what the Publish sheet starts on
+  String postFit = 'crop'; // a PostFit name: how photos that don't fit a post are reshaped
   bool checkUpdates = true; // look for a new version at launch
+  bool openOnCard = true; // open ShotDrop when a card is plugged in
+  bool autoTidy = true; // clear what ShotDrop no longer needs, at launch and after publishing
+  int keepPostedDays = 7; // how long copies of posted photos stay (0 = until cleared by hand)
 
   Future<void> load() async {
     final p = await prefs();
@@ -459,32 +527,55 @@ class AppSettings extends ChangeNotifier {
     saveEdge = p.getInt('${_prefix}saveEdge') ?? saveEdge;
     galleryCopy = p.getBool('${_prefix}galleryCopy') ?? galleryCopy;
     publishMode = p.getString('${_prefix}publishMode') ?? publishMode;
+    postFit = p.getString('${_prefix}postFit') ?? postFit;
     checkUpdates = p.getBool('${_prefix}checkUpdates') ?? checkUpdates;
+    openOnCard = p.getBool('${_prefix}openOnCard') ?? openOnCard;
+    autoTidy = p.getBool('${_prefix}autoTidy') ?? autoTidy;
+    keepPostedDays = p.getInt('${_prefix}keepPostedDays') ?? keepPostedDays;
     notifyListeners();
   }
 
-  Future<void> set({bool? portraitAt45, int? saveEdge, bool? galleryCopy, String? publishMode, bool? checkUpdates}) async {
+  Future<void> set({
+    bool? portraitAt45,
+    int? saveEdge,
+    bool? galleryCopy,
+    String? publishMode,
+    String? postFit,
+    bool? checkUpdates,
+    bool? openOnCard,
+    bool? autoTidy,
+    int? keepPostedDays,
+  }) async {
     final p = await prefs();
-    if (portraitAt45 != null) {
-      this.portraitAt45 = portraitAt45;
-      await p.setBool('${_prefix}portraitAt45', portraitAt45);
+    Future<void> put(String key, Object? v) async {
+      switch (v) {
+        case bool b:
+          await p.setBool('$_prefix$key', b);
+        case int i:
+          await p.setInt('$_prefix$key', i);
+        case String s:
+          await p.setString('$_prefix$key', s);
+      }
     }
-    if (saveEdge != null) {
-      this.saveEdge = saveEdge;
-      await p.setInt('${_prefix}saveEdge', saveEdge);
-    }
-    if (galleryCopy != null) {
-      this.galleryCopy = galleryCopy;
-      await p.setBool('${_prefix}galleryCopy', galleryCopy);
-    }
-    if (publishMode != null) {
-      this.publishMode = publishMode;
-      await p.setString('${_prefix}publishMode', publishMode);
-    }
-    if (checkUpdates != null) {
-      this.checkUpdates = checkUpdates;
-      await p.setBool('${_prefix}checkUpdates', checkUpdates);
-    }
+
+    this.portraitAt45 = portraitAt45 ?? this.portraitAt45;
+    this.saveEdge = saveEdge ?? this.saveEdge;
+    this.galleryCopy = galleryCopy ?? this.galleryCopy;
+    this.publishMode = publishMode ?? this.publishMode;
+    this.postFit = postFit ?? this.postFit;
+    this.checkUpdates = checkUpdates ?? this.checkUpdates;
+    this.openOnCard = openOnCard ?? this.openOnCard;
+    this.autoTidy = autoTidy ?? this.autoTidy;
+    this.keepPostedDays = keepPostedDays ?? this.keepPostedDays;
     notifyListeners();
+    await put('portraitAt45', portraitAt45);
+    await put('saveEdge', saveEdge);
+    await put('galleryCopy', galleryCopy);
+    await put('publishMode', publishMode);
+    await put('postFit', postFit);
+    await put('checkUpdates', checkUpdates);
+    await put('openOnCard', openOnCard);
+    await put('autoTidy', autoTidy);
+    await put('keepPostedDays', keepPostedDays);
   }
 }

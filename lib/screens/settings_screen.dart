@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../app_channel.dart';
+import '../edit/post_shape.dart';
 import '../publish.dart';
+import '../storage.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
@@ -24,13 +26,13 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool? _captionOn;
   String _version = '';
-  int? _keptBytes, _cacheBytes; // photos ShotDrop keeps; thumbnails and downloads
+  int? _keptBytes, _postedBytes, _cacheBytes, _freeBytes; // its photos; posted copies; thumbnails and downloads; the phone's free space
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _refresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
   }
 
   @override
@@ -48,10 +50,19 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   Future<void> _refresh() async {
     final on = await AppChannel.instance.captionHelperOn().catchError((Object _) => false);
     final v = await AppChannel.instance.version().then((v) => v.name).catchError((Object _) => '');
-    int? kept, cache;
+    int? kept, posted, cache;
+    if (!mounted) return;
+    final uploads = AppScope.of(context).uploads;
+    final free = await AppChannel.instance.freeSpace().catchError((Object _) => -1);
     try {
       kept = await _size(await getApplicationSupportDirectory());
       cache = await _size(await getTemporaryDirectory());
+      posted = 0;
+      for (final i in uploads.items.where((i) => i.published)) {
+        for (final path in [i.sourcePath, ?i.exportPath]) {
+          posted = posted! + await File(path).length().catchError((Object _) => 0);
+        }
+      }
     } catch (_) {
       // Sizes are a nicety; leave them blank if storage can't be read.
     }
@@ -59,8 +70,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       setState(() {
         _captionOn = on;
         _version = v;
-        _keptBytes = kept;
+        _keptBytes = kept == null || posted == null ? kept : kept - posted;
+        _postedBytes = posted;
         _cacheBytes = cache;
+        _freeBytes = free < 0 ? null : free;
       });
     }
   }
@@ -75,7 +88,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     return total;
   }
 
-  static String _mb(int? bytes) => bytes == null ? '…' : '${(bytes / 1e6).toStringAsFixed(bytes < 1e7 ? 1 : 0)} MB';
+  static String _mb(int? bytes) => bytes == null
+      ? '…'
+      : bytes >= 1e9
+      ? '${(bytes / 1e9).toStringAsFixed(1)} GB'
+      : '${(bytes / 1e6).toStringAsFixed(bytes < 1e7 ? 1 : 0)} MB';
+
+  Future<void> _tidyNow() async {
+    final scope = AppScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final freed = await tidyStorage(scope.uploads, scope.settings);
+    await _refresh();
+    messenger.showSnackBar(
+      SnackBar(content: Text(freed < 100000 ? 'Already Tidy: Nothing To Clear' : 'Freed ${_mb(freed)}')),
+    );
+  }
 
   /// "DCIM on the card (1A2B-3C4D)" from the folder's tree uri.
   static String _folderName(String? uri) {
@@ -179,6 +206,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   },
                 ),
                 _Row(icon: Icons.refresh_rounded, title: 'Rescan The Card', onTap: scope.card.refresh),
+                _Switch(
+                  icon: Icons.usb_rounded,
+                  title: 'Open When A Card Is Plugged In',
+                  subtitle: 'Android May Ask Once Whether ShotDrop Should Always Open For The Card Reader',
+                  value: settings.openOnCard,
+                  onChanged: (v) => settings.set(openOnCard: v),
+                ),
               ],
             ),
             _Section(
@@ -217,6 +251,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   options: [for (final m in PublishMode.values) (m.name, m.label, null)],
                   onChanged: (v) => settings.set(publishMode: v),
                 ),
+                _Choice<String>(
+                  icon: Icons.aspect_ratio_rounded,
+                  title: 'Photos That Don\'t Fit A Post',
+                  value: settings.postFit,
+                  options: [for (final f in PostFit.values) (f.name, f.label, '${f.detail}. Posts go from 4:5 to 1.91:1.')],
+                  onChanged: (v) => settings.set(postFit: v),
+                ),
               ],
             ),
             _Section(
@@ -224,12 +265,46 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               children: [
                 _Row(
                   icon: Icons.inventory_2_outlined,
-                  title: 'Photos ShotDrop Keeps',
-                  subtitle: '${_mb(_keptBytes)} · Selected, Upload Folder And Posted Copies',
+                  title: 'Selected And Upload Folder',
+                  subtitle: '${_mb(_keptBytes)} · Your Picks And Edits',
+                ),
+                _Row(
+                  icon: Icons.storage_rounded,
+                  title: 'Phone Storage',
+                  subtitle: _freeBytes == null
+                      ? '…'
+                      : '${_mb(_freeBytes)} Free${_freeBytes! < lowSpaceBytes ? ' · Low, So ShotDrop Tidies Harder' : ''}',
+                ),
+                _Switch(
+                  icon: Icons.auto_delete_outlined,
+                  title: 'Tidy Up Automatically',
+                  subtitle:
+                      'At Launch And After Publishing: Unused Copies, Old Thumbnails, Installed Updates And Old Error Notes',
+                  value: settings.autoTidy,
+                  onChanged: (v) => settings.set(autoTidy: v),
+                ),
+                _Choice<int>(
+                  icon: Icons.history_rounded,
+                  title: 'Keep Copies Of Posted Photos',
+                  value: settings.keepPostedDays,
+                  options: const [
+                    (1, '1 Day', null),
+                    (7, '1 Week', null),
+                    (30, '1 Month', null),
+                    (0, 'Until I Clear Them', null),
+                  ],
+                  onChanged: (v) => settings.set(keepPostedDays: v),
                 ),
                 _Row(
                   icon: Icons.cleaning_services_outlined,
+                  title: 'Tidy Up Now',
+                  subtitle: 'Clears what ShotDrop no longer needs. Selected and the Upload folder stay.',
+                  onTap: _tidyNow,
+                ),
+                _Row(
+                  icon: Icons.delete_sweep_outlined,
                   title: 'Free Up Space From Posted Photos',
+                  subtitle: '${_mb(_postedBytes)} · All Posted Copies, Now',
                   onTap: _clearPosted,
                 ),
                 _Row(

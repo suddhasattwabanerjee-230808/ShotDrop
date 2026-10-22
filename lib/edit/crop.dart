@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'render.dart';
+
 /// Crop-frame geometry, all in normalized photo coordinates (0..1 each way).
 
 const minCropSide = 0.08;
@@ -81,5 +83,37 @@ Rect refitCrop(Rect crop, double? k) {
   }
   final left = (c.dx - w / 2).clamp(0.0, 1 - w);
   final top = (c.dy - h / 2).clamp(0.0, 1 - h);
+  return Rect.fromLTWH(left, top, w, h);
+}
+
+/// The crop view on screen: the frame (the crop, as big as fits [box] less
+/// [pad], with [top] kept clear) and where the whole photo of [o] pixels
+/// sits around it.
+({Rect photo, Rect frame}) cropLayout(Size o, Rect crop, Size box, {double pad = 28, double top = 56}) {
+  final frame = fitRect(Size(crop.width * o.width, crop.height * o.height), box, pad: pad, top: top);
+  final pw = frame.width / crop.width, ph = frame.height / crop.height;
+  return (photo: Rect.fromLTWH(frame.left - crop.left * pw, frame.top - crop.top * ph, pw, ph), frame: frame);
+}
+
+/// The crop after the photo, at [photo] on screen when the gesture began,
+/// is dragged from [focal0] to [focal] and zoomed by [scale] under a [frame]
+/// that stays put. The photo always covers the frame, and can't be zoomed
+/// in past [minCropSide].
+Rect panZoomCrop({
+  required Rect photo,
+  required Rect frame,
+  required Offset focal0,
+  required Offset focal,
+  required double scale,
+}) {
+  final minZ = math.max(frame.width / photo.width, frame.height / photo.height);
+  final maxZ = math.min(frame.width / minCropSide / photo.width, frame.height / minCropSide / photo.height);
+  final z = scale.clamp(minZ, math.max(minZ, maxZ));
+  final pw = photo.width * z, ph = photo.height * z;
+  // The point of the photo under the fingers stays under them.
+  final u = (focal0.dx - photo.left) / photo.width, v = (focal0.dy - photo.top) / photo.height;
+  final w = math.min(1.0, frame.width / pw), h = math.min(1.0, frame.height / ph);
+  final left = ((frame.left - (focal.dx - u * pw)) / pw).clamp(0.0, 1 - w);
+  final top = ((frame.top - (focal.dy - v * ph)) / ph).clamp(0.0, 1 - h);
   return Rect.fromLTWH(left, top, w, h);
 }
