@@ -311,6 +311,13 @@ void main() {
     expect(followCrop(prev, turned).slims.single.left, 0.4);
   });
 
+  test('settings that can\'t be read come back empty instead of hanging start-up', () async {
+    TestWidgetsFlutterBinding.ensureInitialized(); // no 'shotdrop/app' handler: the call fails
+    final p = await prefs().timeout(const Duration(seconds: 5));
+    expect(p.getString('shotdrop.card_folder.v1'), isNull);
+    expect(p.getBool('anything'), isNull);
+  });
+
   group('crop', () {
     const photo = Size(3000, 2000);
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3] - 2026-10-22 (build 9)
+
+Opens again.
+
+- Fixed: 0.5.2 stopped at a black screen. Settings are now saved by Android itself, not by an add-on that didn't work in the installed app (which is also why nothing was being remembered before).
+- If something goes wrong while ShotDrop starts, it opens anyway and leaves a note in Download.
+
 ## [0.5.2] - 2026-10-22 (build 8)
 
 Fixes, and tidier words.
