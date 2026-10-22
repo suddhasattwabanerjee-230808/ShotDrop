@@ -198,9 +198,9 @@ class _GridScreenState extends State<GridScreen> {
                     Text(
                       [
                         _dates.isAll ? '${shots.length}' : '${shots.length} of ${all.length}',
-                        phone ? (all.length == 1 ? 'photo' : 'photos') : 'shots',
-                        if (!phone && rawCount > 0) '· $rawCount with RAW',
-                        if (phone && scope.phone.partial) '· only the ones you allowed',
+                        phone ? (all.length == 1 ? 'Photo' : 'Photos') : 'Shots',
+                        if (!phone && rawCount > 0) '· $rawCount With RAW',
+                        if (phone && scope.phone.partial) '· Only The Ones You Allowed',
                       ].join(' '),
                       style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                     ),
