@@ -97,6 +97,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
             if (!didPop) setState(_picked.clear);
           },
           child: Scaffold(
+            backgroundColor: Colors.transparent,
             appBar: _picking
                 ? AppBar(
                     backgroundColor: surface,
@@ -162,12 +163,12 @@ class _SelectedScreenState extends State<SelectedScreen> {
                   )
                 else
                   SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
                     sliver: SliverGrid(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
-                        mainAxisSpacing: 2,
-                        crossAxisSpacing: 2,
+                        mainAxisSpacing: 6,
+                        crossAxisSpacing: 6,
                       ),
                       delegate: SliverChildBuilderDelegate(childCount: items.length, (context, i) {
                         final item = items[i];
@@ -230,9 +231,9 @@ class _Tile extends StatelessWidget {
         AnimatedPadding(
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOutCubic,
-          padding: EdgeInsets.all(picked ? 10 : 0),
+          padding: EdgeInsets.all(picked ? 8 : 0),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(picked ? 10 : 2),
+            borderRadius: BorderRadius.circular(picked ? 18 : 14),
             child: Image.file(
               File(item.previewPath),
               fit: BoxFit.cover,
@@ -243,21 +244,25 @@ class _Tile extends StatelessWidget {
           ),
         ),
         if (item.edited)
-          const Positioned(left: 6, bottom: 6, child: PhotoBadge(label: 'EDITED', icon: Icons.auto_fix_high_rounded)),
+          const Positioned(
+            left: 6,
+            bottom: 6,
+            child: PhotoBadge(label: 'EDITED', icon: Icons.auto_fix_high_rounded, color: Color(0xE68B5CF6)),
+          ),
         if (picking)
           Positioned(
             top: 6,
             left: 6,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 160),
-              width: 24,
-              height: 24,
+              width: 26,
+              height: 26,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: picked ? accent : const Color(0x66000000),
-                border: Border.all(color: picked ? accent : Colors.white, width: 2),
+                border: Border.all(color: Colors.white, width: 2.5),
               ),
-              child: picked ? const Icon(Icons.check_rounded, size: 16, color: onAccent) : null,
+              child: picked ? const Icon(Icons.check_rounded, size: 17, color: onAccent) : null,
             ),
           ),
       ],

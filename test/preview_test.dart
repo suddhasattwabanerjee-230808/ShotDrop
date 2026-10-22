@@ -44,11 +44,11 @@ Future<void> _cropReal(String from, String to) async {
 }
 
 Future<void> _loadFonts() async {
-  final manrope = FontLoader('Manrope');
-  for (final w in [400, 500, 600, 700, 800]) {
-    manrope.addFont(rootBundle.load('assets/fonts/Manrope-$w.ttf'));
+  final fredoka = FontLoader('Fredoka');
+  for (final w in [400, 500, 600, 700]) {
+    fredoka.addFont(rootBundle.load('assets/fonts/Fredoka-$w.ttf'));
   }
-  await manrope.load();
+  await fredoka.load();
   final icons = FontLoader('MaterialIcons')
     ..addFont(
       Future.value(

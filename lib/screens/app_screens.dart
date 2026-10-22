@@ -68,7 +68,7 @@ class _UpdateSheet extends StatelessWidget {
               if (updater.checking && latest == null)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: CircularProgressIndicator(strokeWidth: 3)),
+                  child: Center(child: CircularProgressIndicator(strokeWidth: 7, strokeCap: StrokeCap.round)),
                 )
               else if (latest == null)
                 _Message(
@@ -147,7 +147,9 @@ class _Message extends StatelessWidget {
       children: [
         Icon(icon, color: accent),
         const SizedBox(width: 12),
-        Expanded(child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700))),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ),
       ],
     ),
   );
@@ -195,83 +197,87 @@ class _CaptionHelperScreenState extends State<CaptionHelperScreen> with WidgetsB
   @override
   Widget build(BuildContext context) {
     final on = _on;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Caption Auto-Paste'), actions: const [ThemeToggle()]),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: on == true ? positive.withValues(alpha: 0.12) : surfaceHigh,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: on == true ? positive : line),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  on == true ? Icons.check_circle_rounded : Icons.content_paste_go_rounded,
-                  color: on == true ? positive : accent,
-                  size: 30,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    on == null
-                        ? 'Checking…'
-                        : on
-                        ? 'On. When ShotDrop opens a new Instagram post, your caption is typed in for you.'
-                        : 'Off. Switch it on once and ShotDrop types your caption into Instagram by itself.',
-                    style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+    return PlayBackdrop(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(title: const Text('Caption Auto-Paste'), actions: const [ThemeToggle()]),
+        body: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: on == true ? positive.withValues(alpha: 0.14) : surface,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: on == true ? positive : line, width: 2),
+                boxShadow: [BoxShadow(color: on == true ? deeper(positive) : cardLip, offset: const Offset(0, 5))],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    on == true ? Icons.check_circle_rounded : Icons.content_paste_go_rounded,
+                    color: on == true ? positive : accent,
+                    size: 30,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      on == null
+                          ? 'Checking…'
+                          : on
+                          ? 'On. When ShotDrop opens a new Instagram post, your caption is typed in for you.'
+                          : 'Off. Switch it on once and ShotDrop types your caption into Instagram by itself.',
+                      style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 22),
-          Text('WHY A SETTING', style: sectionLabel),
-          const SizedBox(height: 8),
-          Text(
-            'Instagram throws away captions that other apps send. The only way in is an Accessibility helper, '
-            'which Android lets only you switch on. ShotDrop\'s helper looks at Instagram only, and only fills '
-            'the caption box right after ShotDrop opens a new post.',
-            style: TextStyle(color: muted, height: 1.45),
-          ),
-          const SizedBox(height: 22),
-          Text('SWITCH IT ON', style: sectionLabel),
-          const SizedBox(height: 10),
-          const _Step(
-            n: 1,
-            text:
-                'Tap "Open Accessibility" below. Find "ShotDrop caption paste" (under Installed apps or Downloaded apps) '
-                'and switch it on, then tap Allow.',
-          ),
-          const _Step(
-            n: 2,
-            text:
-                'If the switch is greyed out ("Restricted setting"): tap "Open App info", tap ⋮ at the top right, '
-                'tap "Allow restricted settings", confirm, then do step 1 again.',
-          ),
-          const _Step(n: 3, text: 'Come back here: this page turns green when it\'s on.'),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: AppChannel.instance.openAccessibility,
-            icon: const Icon(Icons.accessibility_new_rounded),
-            label: const Text('Open Accessibility'),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: AppChannel.instance.openAppInfo,
-            icon: const Icon(Icons.info_outline_rounded),
-            label: const Text('Open App Info'),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'With it off, ShotDrop still copies the caption: long-press the caption box in Instagram and tap Paste.',
-            style: TextStyle(fontSize: 12, color: muted, height: 1.4),
-          ),
-        ],
+            const SizedBox(height: 22),
+            Text('WHY A SETTING', style: sectionLabel),
+            const SizedBox(height: 8),
+            Text(
+              'Instagram throws away captions that other apps send. The only way in is an Accessibility helper, '
+              'which Android lets only you switch on. ShotDrop\'s helper looks at Instagram only, and only fills '
+              'the caption box right after ShotDrop opens a new post.',
+              style: TextStyle(color: muted, height: 1.45),
+            ),
+            const SizedBox(height: 22),
+            Text('SWITCH IT ON', style: sectionLabel),
+            const SizedBox(height: 10),
+            const _Step(
+              n: 1,
+              text:
+                  'Tap "Open Accessibility" below. Find "ShotDrop caption paste" (under Installed apps or Downloaded apps) '
+                  'and switch it on, then tap Allow.',
+            ),
+            const _Step(
+              n: 2,
+              text:
+                  'If the switch is greyed out ("Restricted setting"): tap "Open App info", tap ⋮ at the top right, '
+                  'tap "Allow restricted settings", confirm, then do step 1 again.',
+            ),
+            const _Step(n: 3, text: 'Come back here: this page turns green when it\'s on.'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: AppChannel.instance.openAccessibility,
+              icon: const Icon(Icons.accessibility_new_rounded),
+              label: const Text('Open Accessibility'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: AppChannel.instance.openAppInfo,
+              icon: const Icon(Icons.info_outline_rounded),
+              label: const Text('Open App Info'),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'With it off, ShotDrop still copies the caption: long-press the caption box in Instagram and tap Paste.',
+              style: TextStyle(fontSize: 12, color: muted, height: 1.4),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -292,8 +298,11 @@ class _Step extends StatelessWidget {
           width: 26,
           height: 26,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-          child: Text('$n', style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800)),
+          decoration: BoxDecoration(color: rainbow[n % rainbow.length], shape: BoxShape.circle),
+          child: Text(
+            '$n',
+            style: TextStyle(color: onFun(rainbow[n % rainbow.length]), fontWeight: FontWeight.w700),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(child: Text(text, style: const TextStyle(height: 1.45))),

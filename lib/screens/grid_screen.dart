@@ -134,13 +134,19 @@ class _GridScreenState extends State<GridScreen> {
   // The list changes under this screen (rescan, another card, new photos on
   // the phone), so it listens itself: the home screen hands it over as a const widget.
   @override
-  Widget build(BuildContext context) => ListenableBuilder(listenable: _source, builder: (context, _) => _build(context));
+  Widget build(BuildContext context) =>
+      ListenableBuilder(listenable: _source, builder: (context, _) => _build(context));
 
   Widget _build(BuildContext context) {
     final scope = AppScope.of(context);
     final phone = widget.gallery == Gallery.phone;
     final all = _source.shots;
-    final shots = _dates.isAll ? all : [for (final s in all) if (_dates.contains(s.taken)) s];
+    final shots = _dates.isAll
+        ? all
+        : [
+            for (final s in all)
+              if (_dates.contains(s.taken)) s,
+          ];
     _selected.retainAll({for (final s in shots) s.id});
     final days = <List<CardShot>>[];
     for (final s in shots) {
@@ -156,6 +162,7 @@ class _GridScreenState extends State<GridScreen> {
         if (!didPop) _clear();
       },
       child: Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: _selecting
             ? AppBar(
                 leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: _clear),
@@ -208,7 +215,10 @@ class _GridScreenState extends State<GridScreen> {
                 title: 'No Photos For This Filter',
                 body: '${_dates.label}: nothing ${phone ? 'on the phone' : 'on the card'}.',
                 actions: [
-                  FilledButton(onPressed: () => setState(() => _dates = DateFilter.all), child: const Text('Show All Dates')),
+                  FilledButton(
+                    onPressed: () => setState(() => _dates = DateFilter.all),
+                    child: const Text('Show All Dates'),
+                  ),
                   TextButton(onPressed: () => _pickDates(all), child: const Text('Change The Filter')),
                 ],
               )
@@ -236,12 +246,12 @@ class _GridScreenState extends State<GridScreen> {
                           ),
                         ),
                         SliverPadding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                           sliver: SliverGrid(
                             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 3,
-                              mainAxisSpacing: 2,
-                              crossAxisSpacing: 2,
+                              mainAxisSpacing: 6,
+                              crossAxisSpacing: 6,
                             ),
                             delegate: SliverChildBuilderDelegate(childCount: day.length, (context, i) {
                               final s = day[i];
@@ -312,7 +322,7 @@ class _DateChip extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 4),
     child: Material(
       color: accent,
-      borderRadius: BorderRadius.circular(20),
+      shape: ChunkyBorder(borderRadius: BorderRadius.circular(20), depth: 3, lip: deeper(accent)),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
@@ -329,7 +339,7 @@ class _DateChip extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800, fontSize: 13),
+                  style: const TextStyle(color: onAccent, fontWeight: FontWeight.w700, fontSize: 14),
                 ),
               ),
               IconButton(
@@ -380,24 +390,54 @@ class _DayHeader extends StatelessWidget {
   final VoidCallback onToggle;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 18, 8, 8),
-    child: Row(
-      children: [
-        Text(shortDay(day.first.taken), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
-        const SizedBox(width: 8),
-        Text(
-          '${day.length}',
-          style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w700),
-        ),
-        const Spacer(),
-        if (selecting)
-          TextButton(onPressed: onToggle, child: Text(allSelected ? 'Clear Day' : 'Select Day'))
-        else
-          const SizedBox(height: 40),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    // Each day gets a colour of the rainbow, by its date, so it keeps it.
+    final d = day.first.taken;
+    final colour = rainbow[(d.year * 372 + d.month * 31 + d.day) % rainbow.length];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 18, 8, 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 5, 6, 5),
+            decoration: BoxDecoration(
+              color: colour,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [BoxShadow(color: deeper(colour, 0.16), offset: const Offset(0, 3))],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  shortDay(d),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: onFun(colour)),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  constraints: const BoxConstraints(minWidth: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: onFun(colour).withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${day.length}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: onFun(colour), fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          if (selecting)
+            TextButton(onPressed: onToggle, child: Text(allSelected ? 'Clear Day' : 'Select Day'))
+          else
+            const SizedBox(height: 40),
+        ],
+      ),
+    );
+  }
 }
 
 class _Tile extends StatelessWidget {
@@ -428,13 +468,24 @@ class _Tile extends StatelessWidget {
           AnimatedPadding(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOutCubic,
-            padding: EdgeInsets.all(selected ? 10 : 0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(selected ? 10 : 2),
-              child: CardImage(file: shot.primary, maxEdge: 360),
+            padding: EdgeInsets.all(selected ? 8 : 0),
+            child: Container(
+              foregroundDecoration: selected
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: accent, width: 3),
+                    )
+                  : null,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(selected ? 18 : 14),
+                child: CardImage(file: shot.primary, maxEdge: 360),
+              ),
             ),
           ),
-          if (!shot.editable) const ColoredBox(color: Color(0x66000000)),
+          if (!shot.editable)
+            DecoratedBox(
+              decoration: BoxDecoration(color: const Color(0x66000000), borderRadius: BorderRadius.circular(14)),
+            ),
           Positioned(
             top: 6,
             right: 6,
@@ -444,7 +495,7 @@ class _Tile extends StatelessWidget {
             Positioned(
               left: 6,
               bottom: 6,
-              child: PhotoBadge(label: 'READY', icon: Icons.check_rounded, color: positive, fg: const Color(0xFF06210F)),
+              child: PhotoBadge(label: 'READY', icon: Icons.check_rounded, color: grass, fg: const Color(0xFF06210F)),
             )
           else if (kept)
             Positioned(
@@ -456,7 +507,7 @@ class _Tile extends StatelessWidget {
             const Positioned(
               left: 6,
               bottom: 6,
-              child: PhotoBadge(label: 'POSTED', icon: Icons.send_rounded),
+              child: PhotoBadge(label: 'POSTED', icon: Icons.send_rounded, color: Color(0xE66A45E8)),
             ),
           if (selecting)
             Positioned(
@@ -464,14 +515,14 @@ class _Tile extends StatelessWidget {
               left: 6,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 160),
-                width: 24,
-                height: 24,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: selected ? accent : const Color(0x66000000),
-                  border: Border.all(color: selected ? accent : Colors.white, width: 2),
+                  border: Border.all(color: Colors.white, width: 2.5),
                 ),
-                child: selected ? const Icon(Icons.check_rounded, size: 16, color: onAccent) : null,
+                child: selected ? const Icon(Icons.check_rounded, size: 17, color: onAccent) : null,
               ),
             ),
         ],

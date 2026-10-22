@@ -87,6 +87,7 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Upload Folder'), actions: const [ThemeToggle()]),
       body: ListenableBuilder(
         listenable: uploads,

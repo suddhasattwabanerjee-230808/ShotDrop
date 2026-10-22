@@ -43,6 +43,7 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
         final card = scope.card;
         if (card.state == CardState.ready) return const GridScreen();
         return Scaffold(
+          backgroundColor: Colors.transparent,
           appBar: AppBar(
             title: const Text('SD Card Gallery'),
             actions: const [ThemeToggle()],
@@ -89,7 +90,11 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
       case CardState.loading:
         return const StatePanel(
           icon: Icons.sd_card_outlined,
-          iconWidget: SizedBox(width: 96, height: 96, child: CircularProgressIndicator(strokeWidth: 3)),
+          iconWidget: SizedBox(
+            width: 96,
+            height: 96,
+            child: CircularProgressIndicator(strokeWidth: 7, strokeCap: StrokeCap.round),
+          ),
           title: 'Reading The Card…',
           body: 'Finding every photo in the DCIM folder.',
         );
@@ -98,9 +103,7 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
           icon: Icons.error_outline_rounded,
           title: 'Couldn\'t Read The Card',
           body: card.error ?? 'Something went wrong.',
-          actions: [
-            FilledButton(onPressed: card.refresh, child: const Text('Try Again')),
-          ],
+          actions: [FilledButton(onPressed: card.refresh, child: const Text('Try Again'))],
         );
       case CardState.ready:
         return const SizedBox.shrink();
@@ -147,7 +150,7 @@ class _PulsingIconState extends State<_PulsingIcon> with SingleTickerProviderSta
       builder: (context, _) => Stack(
         alignment: Alignment.center,
         children: [
-          for (final phase in [0.0, 0.5])
+          for (final (phase, colour) in [(0.0, accent), (0.33, tangerine), (0.66, sky)])
             Builder(
               builder: (context) {
                 final t = (_c.value + phase) % 1;
@@ -155,21 +158,30 @@ class _PulsingIconState extends State<_PulsingIcon> with SingleTickerProviderSta
                   width: 96 + 44 * t,
                   height: 96 + 44 * t,
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: accent.withValues(alpha: (1 - t) * 0.5), width: 2),
+                    borderRadius: BorderRadius.circular((96 + 44 * t) * 0.36),
+                    border: Border.all(color: colour.withValues(alpha: (1 - t) * 0.7), width: 3),
                   ),
                 );
               },
             ),
-          Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              color: surface,
-              shape: BoxShape.circle,
-              border: Border.all(color: line),
+          Transform.scale(
+            // A little heartbeat with each ring.
+            scale: 1 + 0.05 * Curves.easeOutBack.transform(1 - ((_c.value * 3) % 1)),
+            child: Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [tangerine, accent],
+                ),
+                borderRadius: BorderRadius.circular(96 * 0.36),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 3),
+                boxShadow: [BoxShadow(color: deeper(accent, 0.2), offset: const Offset(0, 6))],
+              ),
+              child: Icon(widget.icon, size: 44, color: Colors.white),
             ),
-            child: Icon(widget.icon, size: 42, color: accent),
           ),
         ],
       ),

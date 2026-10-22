@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'card_channel.dart';
@@ -183,8 +185,8 @@ class PhotoBadge extends StatelessWidget {
     super.key,
     required this.label,
     this.icon,
-    this.color = const Color(0xB3000000),
-    this.fg = const Color(0xFFF2F2F5),
+    this.color = const Color(0xB32D1E4F),
+    this.fg = const Color(0xFFFFFFFF),
   });
 
   final String label;
@@ -193,15 +195,19 @@ class PhotoBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0x55FFFFFF), width: 1.2),
+    ),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (icon != null) ...[Icon(icon, size: 11, color: fg), const SizedBox(width: 3)],
+        if (icon != null) ...[Icon(icon, size: 12, color: fg), const SizedBox(width: 3)],
         Text(
           label,
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: fg, letterSpacing: 0.4),
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: fg, letterSpacing: 0.5),
         ),
       ],
     ),
@@ -231,28 +237,18 @@ class StatePanel extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          iconWidget ??
-              Container(
-                width: 96,
-                height: 96,
-                decoration: BoxDecoration(
-                  color: surface,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: line),
-                ),
-                child: Icon(icon, size: 42, color: accent),
-              ),
+          iconWidget ?? FunIcon(icon: icon),
           const SizedBox(height: 24),
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1.2),
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, height: 1.15),
           ),
           const SizedBox(height: 10),
           Text(
             body,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 15, color: muted, height: 1.45),
+            style: TextStyle(fontSize: 15.5, color: muted, height: 1.45),
           ),
           if (actions.isNotEmpty) const SizedBox(height: 28),
           for (final a in actions)
@@ -264,6 +260,209 @@ class StatePanel extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A big icon on a bouncy candy blob, gently bobbing: the picture on empty
+/// and waiting screens.
+class FunIcon extends StatefulWidget {
+  const FunIcon({super.key, required this.icon, this.colors, this.size = 104});
+  final IconData icon;
+  final List<Color>? colors; // the blob's gradient (default: pink to tangerine)
+  final double size;
+
+  @override
+  State<FunIcon> createState() => _FunIconState();
+}
+
+class _FunIconState extends State<FunIcon> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors ?? [accent, tangerine];
+    final s = widget.size;
+    return SizedBox(
+      width: s * 1.5,
+      height: s * 1.35,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, child) {
+          final t = Curves.easeInOutSine.transform(_c.value);
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              // Sparkles around the blob, twinkling out of step with the bob.
+              for (final (dx, dy, size, colour, phase) in [
+                (-0.62, -0.42, 16.0, sunny, 0.0),
+                (0.64, -0.3, 11.0, sky, 0.5),
+                (0.58, 0.5, 14.0, grass, 0.25),
+                (-0.6, 0.46, 9.0, grape, 0.75),
+              ])
+                Align(
+                  alignment: Alignment(dx, dy),
+                  child: Transform.scale(
+                    scale: 0.7 + 0.3 * ((t + phase) % 1),
+                    child: CustomPaint(size: Size.square(size), painter: _SparklePainter(colour)),
+                  ),
+                ),
+              Transform.translate(
+                offset: Offset(0, -5 + 10 * t),
+                child: Transform.rotate(angle: -0.06 + 0.12 * t, child: child),
+              ),
+            ],
+          );
+        },
+        child: Container(
+          width: s,
+          height: s,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: colors),
+            borderRadius: BorderRadius.circular(s * 0.36),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.35), width: 3),
+            boxShadow: [BoxShadow(color: deeper(colors.last, 0.2), offset: const Offset(0, 6))],
+          ),
+          child: Icon(widget.icon, size: s * 0.46, color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+/// A four-pointed twinkle.
+class _SparklePainter extends CustomPainter {
+  const _SparklePainter(this.color);
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      canvas.drawPath(sparklePath(size.center(Offset.zero), size.width / 2), Paint()..color = color);
+
+  @override
+  bool shouldRepaint(_SparklePainter old) => old.color != color;
+}
+
+/// A four-pointed star of radius [r] around [c].
+Path sparklePath(Offset c, double r) {
+  final k = r * 0.22;
+  return Path()
+    ..moveTo(c.dx, c.dy - r)
+    ..quadraticBezierTo(c.dx + k, c.dy - k, c.dx + r, c.dy)
+    ..quadraticBezierTo(c.dx + k, c.dy + k, c.dx, c.dy + r)
+    ..quadraticBezierTo(c.dx - k, c.dy + k, c.dx - r, c.dy)
+    ..quadraticBezierTo(c.dx - k, c.dy - k, c.dx, c.dy - r)
+    ..close();
+}
+
+/// The page background behind the tabs: cream (or night) paper with soft
+/// colour blobs and a sprinkle of confetti. Paints under [child], which keeps
+/// its own Scaffold see-through.
+class PlayBackdrop extends StatelessWidget {
+  const PlayBackdrop({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    painter: _BackdropPainter(paper: paper, colors: rainbow, light: isLight),
+    child: child,
+  );
+}
+
+class _BackdropPainter extends CustomPainter {
+  _BackdropPainter({required this.paper, required this.colors, required this.light});
+  final Color paper;
+  final List<Color> colors;
+  final bool light;
+
+  // Where the confetti goes, as fractions of the screen: the same every time.
+  static final _bits = () {
+    final rnd = math.Random(11);
+    return [
+      for (var i = 0; i < 30; i++)
+        (
+          x: rnd.nextDouble(),
+          y: rnd.nextDouble(),
+          kind: rnd.nextInt(4),
+          size: 0.6 + rnd.nextDouble() * 0.6,
+          turn: rnd.nextDouble() * math.pi,
+        ),
+    ];
+  }();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final screen = Offset.zero & size;
+    canvas.drawRect(screen, Paint()..color = paper);
+    // Big soft blobs.
+    final glow = light ? 0.20 : 0.24;
+    for (final (fx, fy, fr, ci) in [
+      (1.0, 0.04, 0.62, 0),
+      (-0.05, 0.45, 0.55, 4),
+      (0.95, 0.88, 0.6, 3),
+      (0.1, 1.0, 0.4, 1),
+    ]) {
+      final c = Offset(size.width * fx, size.height * fy);
+      final r = size.width * fr;
+      canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [
+              colors[ci].withValues(alpha: glow),
+              colors[ci].withValues(alpha: 0),
+            ],
+          ).createShader(Rect.fromCircle(center: c, radius: r)),
+      );
+    }
+    // Confetti.
+    final alpha = light ? 0.5 : 0.45;
+    for (final (i, b) in _bits.indexed) {
+      final c = Offset(b.x * size.width, b.y * size.height);
+      final paint = Paint()..color = colors[i % colors.length].withValues(alpha: alpha);
+      final s = 6 * b.size;
+      switch (b.kind) {
+        case 0:
+          canvas.drawCircle(c, s * 0.7, paint);
+        case 1:
+          canvas.drawCircle(
+            c,
+            s,
+            paint
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5,
+          );
+        case 2:
+          canvas.drawPath(sparklePath(c, s * 1.5), paint);
+        default:
+          // A little squiggle.
+          canvas.save();
+          canvas.translate(c.dx, c.dy);
+          canvas.rotate(b.turn);
+          final w = Path()..moveTo(-s * 2, 0);
+          for (var k = 0; k < 4; k++) {
+            w.relativeQuadraticBezierTo(s * 0.5, (k.isEven ? -1 : 1) * s, s, 0);
+          }
+          canvas.drawPath(
+            w,
+            paint
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 2.5
+              ..strokeCap = StrokeCap.round,
+          );
+          canvas.restore();
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BackdropPainter old) =>
+      old.paper != paper || old.light != light || !listEquals(old.colors, colors);
 }
 
 String shortDay(DateTime d) {
@@ -294,8 +493,7 @@ class InstagramLogo extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) =>
-      CustomPaint(size: Size.square(size), painter: const _InstagramLogoPainter());
+  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: const _InstagramLogoPainter());
 }
 
 class _InstagramLogoPainter extends CustomPainter {

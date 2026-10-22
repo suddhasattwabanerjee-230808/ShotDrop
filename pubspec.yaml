@@ -1,7 +1,7 @@
 name: shotdrop
 description: "Camera card to Instagram: pick, edit and post photos from a Nikon SD card."
 publish_to: 'none'
-version: 0.6.4+14
+version: 0.7.0+15
 
 environment:
   sdk: ^3.13.5
@@ -20,16 +20,14 @@ flutter:
   uses-material-design: true
   assets:
     - assets/fonts/OFL.txt
-  # Manrope (SIL Open Font License 1.1, assets/fonts/OFL.txt): the app's typeface.
+  # Fredoka (SIL Open Font License 1.1, assets/fonts/OFL.txt): the app's rounded, playful typeface.
   fonts:
-    - family: Manrope
+    - family: Fredoka
       fonts:
-        - asset: assets/fonts/Manrope-400.ttf
-        - asset: assets/fonts/Manrope-500.ttf
+        - asset: assets/fonts/Fredoka-400.ttf
+        - asset: assets/fonts/Fredoka-500.ttf
           weight: 500
-        - asset: assets/fonts/Manrope-600.ttf
+        - asset: assets/fonts/Fredoka-600.ttf
           weight: 600
-        - asset: assets/fonts/Manrope-700.ttf
+        - asset: assets/fonts/Fredoka-700.ttf
           weight: 700
-        - asset: assets/fonts/Manrope-800.ttf
-          weight: 800

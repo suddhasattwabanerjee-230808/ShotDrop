@@ -145,35 +145,54 @@ class _RevealPainter extends CustomPainter {
   bool shouldRepaint(_RevealPainter old) => old.shot != shot || old.from != from || old.t != t;
 }
 
-/// The light / dark switch on every screen: a sun in dark mode, a moon in
-/// light, turning as it changes.
+/// The light / dark switch on every screen: a sun on a yellow bubble in dark
+/// mode, a moon on a purple one in light, spinning as it changes.
 class ThemeToggle extends StatelessWidget {
   const ThemeToggle({super.key, this.color});
 
-  /// The icon's colour, where the bar isn't the usual one (default: the bar's own).
+  /// The icon's colour, where the bar isn't the usual one (default: a bubble).
   final Color? color;
 
   @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: isLight ? 'Dark Mode' : 'Light Mode',
-    color: color,
-    onPressed: () {
-      final box = context.findRenderObject() as RenderBox?;
-      final centre = box == null ? Offset.zero : box.localToGlobal(box.size.center(Offset.zero));
-      ThemeFlip.toggle(context, centre);
-    },
-    icon: AnimatedSwitcher(
-      duration: const Duration(milliseconds: 420),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, a) => RotationTransition(
-        turns: Tween(begin: -0.35, end: 0.0).animate(a),
-        child: ScaleTransition(
-          scale: a,
-          child: FadeTransition(opacity: a, child: child),
+  Widget build(BuildContext context) {
+    final bubble = isLight ? grape : sunny;
+    return IconButton(
+      tooltip: isLight ? 'Dark Mode' : 'Light Mode',
+      color: color,
+      onPressed: () {
+        final box = context.findRenderObject() as RenderBox?;
+        final centre = box == null ? Offset.zero : box.localToGlobal(box.size.center(Offset.zero));
+        ThemeFlip.toggle(context, centre);
+      },
+      icon: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 520),
+        switchInCurve: Curves.elasticOut,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, a) => RotationTransition(
+          turns: Tween(begin: -0.5, end: 0.0).animate(a),
+          child: ScaleTransition(
+            scale: a,
+            child: FadeTransition(opacity: a, child: child),
+          ),
         ),
+        child: color != null
+            ? Icon(isLight ? Icons.dark_mode_rounded : Icons.light_mode_rounded, key: ValueKey(isLight))
+            : Container(
+                key: ValueKey(isLight),
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: bubble,
+                  shape: BoxShape.circle,
+                  boxShadow: [BoxShadow(color: deeper(bubble, 0.18), offset: const Offset(0, 3))],
+                ),
+                child: Icon(
+                  isLight ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  size: 21,
+                  color: onFun(bubble),
+                ),
+              ),
       ),
-      child: Icon(isLight ? Icons.dark_mode_rounded : Icons.light_mode_rounded, key: ValueKey(isLight)),
-    ),
-  );
+    );
+  }
 }

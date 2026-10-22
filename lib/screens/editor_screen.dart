@@ -564,7 +564,7 @@ class _EditorScreenState extends State<EditorScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const CircularProgressIndicator(strokeWidth: 3),
+          const CircularProgressIndicator(strokeWidth: 7, strokeCap: StrokeCap.round),
           const SizedBox(height: 16),
           Text(_status ?? '', style: const TextStyle(fontWeight: FontWeight.w700)),
         ],

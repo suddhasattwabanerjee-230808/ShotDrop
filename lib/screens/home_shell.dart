@@ -32,8 +32,7 @@ class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
   /// Switches to [tab] from anywhere inside the shell.
-  static void go(BuildContext context, HomeTab tab) =>
-      context.findAncestorStateOfType<_HomeShellState>()?._go(tab);
+  static void go(BuildContext context, HomeTab tab) => context.findAncestorStateOfType<_HomeShellState>()?._go(tab);
 
   /// Set while a tab wants the bar out of the way (picking photos in the Gallery).
   static final hidden = ValueNotifier<bool>(false);
@@ -127,23 +126,29 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop) _go(HomeTab.gallery);
     },
-    child: Scaffold(
-      extendBody: true,
-      body: IndexedStack(
-        index: _tab.index,
-        children: const [CardScreen(), PhoneScreen(), SelectedScreen(), UploadScreen(), SettingsScreen()],
-      ),
-      bottomNavigationBar: ValueListenableBuilder<bool>(
-        valueListenable: HomeShell.hidden,
-        builder: (context, hidden, _) => AnimatedSize(
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOutCubic,
-          child: hidden
-              ? const SizedBox(width: double.infinity)
-              : SafeArea(
-                  top: false,
-                  child: Center(heightFactor: 1, child: _NavBar(tab: _tab, onTap: _go)),
-                ),
+    child: PlayBackdrop(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        extendBody: true,
+        body: IndexedStack(
+          index: _tab.index,
+          children: const [CardScreen(), PhoneScreen(), SelectedScreen(), UploadScreen(), SettingsScreen()],
+        ),
+        bottomNavigationBar: ValueListenableBuilder<bool>(
+          valueListenable: HomeShell.hidden,
+          builder: (context, hidden, _) => AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            child: hidden
+                ? const SizedBox(width: double.infinity)
+                : SafeArea(
+                    top: false,
+                    child: Center(
+                      heightFactor: 1,
+                      child: _NavBar(tab: _tab, onTap: _go),
+                    ),
+                  ),
+          ),
         ),
       ),
     ),
@@ -159,11 +164,14 @@ class _NavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 18),
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(34),
-          boxShadow: [BoxShadow(color: Color(isLight ? 0x24000000 : 0x99000000), blurRadius: 24, offset: const Offset(0, 8))],
+          boxShadow: [
+            BoxShadow(color: cardLip, offset: const Offset(0, 6)),
+            BoxShadow(color: Color(isLight ? 0x1F6A45E8 : 0x80000000), blurRadius: 24, offset: const Offset(0, 12)),
+          ],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(34),
@@ -172,9 +180,9 @@ class _NavBar extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: surfaceHigh.withValues(alpha: 0.86),
+                color: surface.withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(34),
-                border: Border.all(color: ink.withValues(alpha: 0.08)),
+                border: Border.all(color: line, width: 2),
               ),
               child: ListenableBuilder(
                 listenable: Listenable.merge([scope.uploads, scope.updater]),
@@ -185,6 +193,7 @@ class _NavBar extends StatelessWidget {
                       icon: Icons.sd_card_outlined,
                       activeIcon: Icons.sd_card_rounded,
                       label: 'SD Card',
+                      color: tangerine,
                       selected: tab == HomeTab.gallery,
                       onTap: () => onTap(HomeTab.gallery),
                     ),
@@ -192,6 +201,7 @@ class _NavBar extends StatelessWidget {
                       icon: Icons.photo_library_outlined,
                       activeIcon: Icons.photo_library_rounded,
                       label: 'Phone',
+                      color: sky,
                       selected: tab == HomeTab.phone,
                       onTap: () => onTap(HomeTab.phone),
                     ),
@@ -199,6 +209,7 @@ class _NavBar extends StatelessWidget {
                       icon: Icons.favorite_border_rounded,
                       activeIcon: Icons.favorite_rounded,
                       label: 'Selected',
+                      color: accent,
                       count: scope.uploads.selected.length + scope.uploads.copying,
                       selected: tab == HomeTab.selected,
                       onTap: () => onTap(HomeTab.selected),
@@ -207,6 +218,7 @@ class _NavBar extends StatelessWidget {
                       icon: Icons.outbox_outlined,
                       activeIcon: Icons.outbox_rounded,
                       label: 'Upload',
+                      color: grass,
                       count: scope.uploads.queued.length,
                       selected: tab == HomeTab.upload,
                       onTap: () => onTap(HomeTab.upload),
@@ -215,6 +227,7 @@ class _NavBar extends StatelessWidget {
                       icon: Icons.settings_outlined,
                       activeIcon: Icons.settings_rounded,
                       label: 'Settings',
+                      color: grape,
                       dot: scope.updater.available,
                       selected: tab == HomeTab.settings,
                       onTap: () => onTap(HomeTab.settings),
@@ -230,13 +243,14 @@ class _NavBar extends StatelessWidget {
   }
 }
 
-/// One tab: just its icon, or, when it's the open one, a yellow pill with
-/// the icon and its name.
+/// One tab, in its own colour: just its icon, or, when it's the open one, a
+/// bouncy pill with the icon and its name.
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
+    required this.color,
     required this.selected,
     required this.onTap,
     this.count = 0,
@@ -245,6 +259,7 @@ class _NavItem extends StatelessWidget {
 
   final IconData icon, activeIcon;
   final String label;
+  final Color color;
   final bool selected, dot;
   final int count;
   final VoidCallback onTap;
@@ -258,32 +273,41 @@ class _NavItem extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutBack,
         height: 52,
-        padding: EdgeInsets.symmetric(horizontal: selected ? 16 : 14),
-        decoration: BoxDecoration(color: selected ? accent : Colors.transparent, borderRadius: BorderRadius.circular(28)),
+        padding: EdgeInsets.symmetric(horizontal: selected ? 14 : 12),
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.transparent,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: selected ? [BoxShadow(color: deeper(color, 0.16), offset: const Offset(0, 3.5))] : const [],
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Badge(
               isLabelVisible: count > 0 || dot,
-              smallSize: 9,
+              smallSize: 10,
               label: count > 0 ? Text('$count') : null,
-              backgroundColor: selected ? onAccent : accent,
-              textColor: selected ? accent : onAccent,
+              backgroundColor: selected ? Colors.white : coral,
+              textColor: selected ? deeper(color, 0.1) : Colors.white,
               offset: const Offset(8, -6),
-              child: Icon(selected ? activeIcon : icon, color: selected ? onAccent : ink, size: 24),
+              child: AnimatedScale(
+                scale: selected ? 1.12 : 1,
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.elasticOut,
+                child: Icon(selected ? activeIcon : icon, color: selected ? onFun(color) : color, size: 25),
+              ),
             ),
             AnimatedSize(
-              duration: const Duration(milliseconds: 280),
-              curve: Curves.easeOutCubic,
+              duration: const Duration(milliseconds: 380),
+              curve: Curves.easeOutBack,
               child: selected
                   ? Padding(
-                      padding: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.only(left: 7),
                       child: Text(
                         label,
-                        style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800, fontSize: 14),
+                        style: TextStyle(color: onFun(color), fontWeight: FontWeight.w700, fontSize: 15),
                       ),
                     )
                   : const SizedBox.shrink(),

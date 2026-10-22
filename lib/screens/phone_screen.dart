@@ -42,6 +42,7 @@ class _PhoneScreenState extends State<PhoneScreen> with WidgetsBindingObserver {
     builder: (context, _) {
       if (_phone.state == PhoneState.ready) return const GridScreen(gallery: Gallery.phone);
       return Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const Text('Phone Gallery'),
           actions: const [ThemeToggle()],
@@ -58,7 +59,11 @@ class _PhoneScreenState extends State<PhoneScreen> with WidgetsBindingObserver {
   Widget _body() => switch (_phone.state) {
     PhoneState.unknown || PhoneState.loading => const StatePanel(
       icon: Icons.photo_library_outlined,
-      iconWidget: SizedBox(width: 96, height: 96, child: CircularProgressIndicator(strokeWidth: 3)),
+      iconWidget: SizedBox(
+        width: 96,
+        height: 96,
+        child: CircularProgressIndicator(strokeWidth: 7, strokeCap: StrokeCap.round),
+      ),
       title: 'Opening The Phone\'s Photos…',
       body: 'Every photo in the phone\'s gallery, newest first.',
     ),

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0] - 2026-10-22 (build 15)
+
+A playful new look. Only the appearance changes: every screen works exactly as before.
+
+- **Candy colours and a rounded font.** Bubblegum pink is the main colour, with a rainbow alongside it (tangerine, sunny yellow, grass green, sky blue, grape). Text is set in Fredoka, a round, friendly typeface.
+- **Dark and light both play.** Dark is a grape night sky; light is a warm cream playroom. The sun / moon button is now a yellow or purple bubble and spins as it switches.
+- **Confetti behind the tabs.** Soft colour glows and a sprinkle of dots, rings, sparkles and squiggles sit behind the galleries, Selected, Upload, Settings and setup.
+- **A tab bar with a colour per tab.** SD Card is orange, Phone blue, Selected pink, Upload green, Settings purple; the open tab bounces into a pill of its colour.
+- **Chunky, toy-like buttons** sitting on a darker lip that sinks when pressed, plus pill-shaped chips, candy slider knobs and switches that turn green with a tick.
+- **Rounded photo tiles** with little gaps, and each day in the galleries gets its own coloured label.
+- **Settings sections in colour**, each with a coloured label and its icons on matching tiles.
+- **Bouncing pictures** on the empty and waiting screens, and a confetti burst with the tick when posting is done.
+
 ## [0.6.4] - 2026-10-22 (build 14)
 
 Light mode.

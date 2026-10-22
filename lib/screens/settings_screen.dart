@@ -27,7 +27,10 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObserver {
   bool? _captionOn;
   String _version = '';
-  int? _keptBytes, _postedBytes, _cacheBytes, _freeBytes; // its photos; posted copies; thumbnails and downloads; the phone's free space
+  int? _keptBytes,
+      _postedBytes,
+      _cacheBytes,
+      _freeBytes; // its photos; posted copies; thumbnails and downloads; the phone's free space
 
   @override
   void initState() {
@@ -141,6 +144,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     final scope = AppScope.of(context);
     final settings = scope.settings;
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Settings'), actions: const [ThemeToggle()]),
       body: ListenableBuilder(
         listenable: Listenable.merge([settings, scope.social, scope.card, scope.updater]),
@@ -149,6 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           children: [
             _Section(
               title: 'INSTAGRAM',
+              color: accent,
               children: [
                 _Row(
                   icon: Icons.alternate_email_rounded,
@@ -169,7 +174,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       : 'Off: The Caption Is Copied For You To Paste',
                   trailing: _Pill(on: _captionOn == true),
                   onTap: () async {
-                    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const CaptionHelperScreen()));
+                    await Navigator.of(context)
+                        .push(MaterialPageRoute<void>(builder: (_) => const CaptionHelperScreen()));
                     _refresh();
                   },
                 ),
@@ -177,6 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
             _Section(
               title: 'CAMERA CARD',
+              color: tangerine,
               children: [
                 _Row(
                   icon: Icons.sd_card_outlined,
@@ -197,6 +204,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
             _Section(
               title: 'EDITING',
+              color: sky,
               children: [
                 _Switch(
                   icon: Icons.crop_portrait_rounded,
@@ -223,6 +231,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
             _Section(
               title: 'PUBLISHING',
+              color: grape,
               children: [
                 _Choice<String>(
                   icon: Icons.send_rounded,
@@ -235,13 +244,16 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   icon: Icons.aspect_ratio_rounded,
                   title: 'Photos That Don\'t Fit A Post',
                   value: settings.postFit,
-                  options: [for (final f in PostFit.values) (f.name, f.label, '${f.detail}. Posts go from 4:5 to 1.91:1.')],
+                  options: [
+                    for (final f in PostFit.values) (f.name, f.label, '${f.detail}. Posts go from 4:5 to 1.91:1.'),
+                  ],
                   onChanged: (v) => settings.set(postFit: v),
                 ),
               ],
             ),
             _Section(
               title: 'STORAGE',
+              color: grass,
               children: [
                 _Row(
                   icon: Icons.inventory_2_outlined,
@@ -258,8 +270,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 _Switch(
                   icon: Icons.auto_delete_outlined,
                   title: 'Tidy Up Automatically',
-                  subtitle:
-                      'At Launch And After Publishing: Unused Copies, Old Thumbnails, Installed Updates And Old Error Notes',
+                  subtitle: 'At Launch And After Publishing: Unused Copies, Old Thumbnails, Installed Updates And Old Error Notes',
                   value: settings.autoTidy,
                   onChanged: (v) => settings.set(autoTidy: v),
                 ),
@@ -297,6 +308,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             ),
             _Section(
               title: 'APP',
+              color: coral,
               children: [
                 _Row(
                   icon: Icons.system_update_rounded,
@@ -315,7 +327,8 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   icon: Icons.info_outline_rounded,
                   title: 'About ShotDrop',
                   subtitle: 'D5600 Card → Edit → Instagram',
-                  onTap: () => showLicensePage(context: context, applicationName: 'ShotDrop', applicationVersion: _version),
+                  onTap: () =>
+                      showLicensePage(context: context, applicationName: 'ShotDrop', applicationVersion: _version),
                 ),
               ],
             ),
@@ -327,33 +340,88 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.children});
+  const _Section({required this.title, required this.color, required this.children});
   final String title;
+  final Color color;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 18),
+    padding: const EdgeInsets.only(top: 22),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(padding: const EdgeInsets.only(left: 6, bottom: 8), child: Text(title, style: sectionLabel)),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [BoxShadow(color: deeper(color, 0.16), offset: const Offset(0, 3))],
+                ),
+                child: Text(title, style: sectionLabel.copyWith(color: onFun(color))),
+              ),
+            ],
+          ),
+        ),
         Material(
           color: surface,
-          borderRadius: BorderRadius.circular(20),
+          shape: ChunkyBorder(
+            borderRadius: BorderRadius.circular(26),
+            side: BorderSide(color: line, width: 2),
+            depth: 5,
+            lip: cardLip,
+          ),
           clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (final (i, c) in children.indexed) ...[
-                if (i > 0) Divider(height: 1, indent: 56, color: line),
-                c,
+          child: _Tint(
+            color: color,
+            child: Column(
+              children: [
+                for (final (i, c) in children.indexed) ...[
+                  if (i > 0) Divider(height: 2, thickness: 2, indent: 68, endIndent: 16, color: line),
+                  c,
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ],
     ),
   );
+}
+
+/// The section's colour, for the icon tiles of its rows.
+class _Tint extends InheritedWidget {
+  const _Tint({required this.color, required super.child});
+  final Color color;
+
+  static Color of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<_Tint>()?.color ?? accent;
+
+  @override
+  bool updateShouldNotify(_Tint old) => old.color != color;
+}
+
+/// A row's icon on a rounded tile in its section's colour.
+class _IconTile extends StatelessWidget {
+  const _IconTile(this.icon);
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _Tint.of(context);
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: isLight ? 0.16 : 0.22),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Icon(icon, color: isLight ? deeper(c, 0.08) : c, size: 21),
+    );
+  }
 }
 
 class _Row extends StatelessWidget {
@@ -367,10 +435,10 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
-    leading: leading ?? Icon(icon, color: accent),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-    subtitle: subtitle == null ? null : Text(subtitle!, style: TextStyle(color: muted, fontSize: 12)),
-    trailing: trailing ?? (onTap == null ? null : Icon(Icons.chevron_right_rounded, color: muted)),
+    leading: leading ?? _IconTile(icon),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+    subtitle: subtitle == null ? null : Text(subtitle!, style: TextStyle(color: muted, fontSize: 12.5)),
+    trailing: trailing ?? (onTap == null ? null : Icon(Icons.chevron_right_rounded, color: _Tint.of(context))),
     onTap: onTap,
   );
 }
@@ -385,9 +453,9 @@ class _Switch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SwitchListTile(
-    secondary: Icon(icon, color: accent),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-    subtitle: subtitle == null ? null : Text(subtitle!, style: TextStyle(color: muted, fontSize: 12)),
+    secondary: _IconTile(icon),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+    subtitle: subtitle == null ? null : Text(subtitle!, style: TextStyle(color: muted, fontSize: 12.5)),
     value: value,
     onChanged: onChanged,
   );
@@ -416,13 +484,13 @@ class _Choice<T> extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(padding: const EdgeInsets.only(top: 2), child: Icon(icon, color: accent)),
+          _IconTile(icon),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
                 if (detail != null) Text(detail, style: TextStyle(color: muted, fontSize: 12)),
                 const SizedBox(height: 10),
                 Wrap(
@@ -434,10 +502,11 @@ class _Choice<T> extends StatelessWidget {
                         label: Text(label),
                         selected: v == value,
                         showCheckmark: false,
-                        selectedColor: accent,
+                        selectedColor: _Tint.of(context),
+                        side: BorderSide(color: v == value ? deeper(_Tint.of(context), 0.1) : line, width: 1.5),
                         labelStyle: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          color: v == value ? onAccent : ink,
+                          fontWeight: FontWeight.w700,
+                          color: v == value ? onFun(_Tint.of(context)) : ink,
                         ),
                         onSelected: (_) => onChanged(v),
                       ),
@@ -460,13 +529,13 @@ class _Pill extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     decoration: BoxDecoration(
-      color: on ? positive.withValues(alpha: 0.15) : surfaceHigh,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: on ? positive : line),
+      color: on ? grass : surfaceHigh,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: on ? deeper(grass, 0.1) : line, width: 1.5),
     ),
     child: Text(
       on ? 'ON' : 'OFF',
-      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: on ? positive : muted),
+      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: on ? Colors.white : muted),
     ),
   );
 }
@@ -475,6 +544,9 @@ class _Dot extends StatelessWidget {
   const _Dot();
 
   @override
-  Widget build(BuildContext context) =>
-      Container(width: 10, height: 10, decoration: BoxDecoration(color: accent, shape: BoxShape.circle));
+  Widget build(BuildContext context) => Container(
+    width: 12,
+    height: 12,
+    decoration: BoxDecoration(color: coral, shape: BoxShape.circle),
+  );
 }
