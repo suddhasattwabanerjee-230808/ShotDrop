@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../app_channel.dart';
 import '../edit/post_shape.dart';
+import '../props.dart';
 import '../publish.dart';
 import '../storage.dart';
 import '../stores.dart';
@@ -331,6 +332,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       showLicensePage(context: context, applicationName: 'ShotDrop', applicationVersion: _version),
                 ),
               ],
+            ),
+            const Padding(padding: EdgeInsets.only(top: 28, bottom: 6), child: Center(child: KiteScene())),
+            Text(
+              'Happy Shooting!',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: muted, fontWeight: FontWeight.w600, fontSize: 15),
             ),
           ],
         ),

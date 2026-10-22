@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../app_channel.dart';
 import '../prefetch.dart';
+import '../props.dart';
 import '../storage.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -165,79 +166,87 @@ class _NavBar extends StatelessWidget {
     final scope = AppScope.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(34),
-          boxShadow: [
-            BoxShadow(color: cardLip, offset: const Offset(0, 6)),
-            BoxShadow(color: Color(isLight ? 0x1F6A45E8 : 0x80000000), blurRadius: 24, offset: const Offset(0, 12)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(34),
-          child: BackdropFilter(
-            filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: surface.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(34),
-                border: Border.all(color: line, width: 2),
-              ),
-              child: ListenableBuilder(
-                listenable: Listenable.merge([scope.uploads, scope.updater]),
-                builder: (context, _) => Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _NavItem(
-                      icon: Icons.sd_card_outlined,
-                      activeIcon: Icons.sd_card_rounded,
-                      label: 'SD Card',
-                      color: tangerine,
-                      selected: tab == HomeTab.gallery,
-                      onTap: () => onTap(HomeTab.gallery),
+      // A lion peeking over the bar's top edge, paws on it.
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Positioned(left: 24, top: -21, child: PeekingLion()),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(34),
+              boxShadow: [
+                BoxShadow(color: cardLip, offset: const Offset(0, 6)),
+                BoxShadow(color: Color(isLight ? 0x1F6A45E8 : 0x80000000), blurRadius: 24, offset: const Offset(0, 12)),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(34),
+              child: BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: surface.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(34),
+                    border: Border.all(color: line, width: 2),
+                  ),
+                  child: ListenableBuilder(
+                    listenable: Listenable.merge([scope.uploads, scope.updater]),
+                    builder: (context, _) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _NavItem(
+                          icon: Icons.sd_card_outlined,
+                          activeIcon: Icons.sd_card_rounded,
+                          label: 'SD Card',
+                          color: tangerine,
+                          selected: tab == HomeTab.gallery,
+                          onTap: () => onTap(HomeTab.gallery),
+                        ),
+                        _NavItem(
+                          icon: Icons.photo_library_outlined,
+                          activeIcon: Icons.photo_library_rounded,
+                          label: 'Phone',
+                          color: sky,
+                          selected: tab == HomeTab.phone,
+                          onTap: () => onTap(HomeTab.phone),
+                        ),
+                        _NavItem(
+                          icon: Icons.favorite_border_rounded,
+                          activeIcon: Icons.favorite_rounded,
+                          label: 'Selected',
+                          color: accent,
+                          count: scope.uploads.selected.length + scope.uploads.copying,
+                          selected: tab == HomeTab.selected,
+                          onTap: () => onTap(HomeTab.selected),
+                        ),
+                        _NavItem(
+                          icon: Icons.outbox_outlined,
+                          activeIcon: Icons.outbox_rounded,
+                          label: 'Upload',
+                          color: grass,
+                          count: scope.uploads.queued.length,
+                          selected: tab == HomeTab.upload,
+                          onTap: () => onTap(HomeTab.upload),
+                        ),
+                        _NavItem(
+                          icon: Icons.settings_outlined,
+                          activeIcon: Icons.settings_rounded,
+                          label: 'Settings',
+                          color: grape,
+                          dot: scope.updater.available,
+                          selected: tab == HomeTab.settings,
+                          onTap: () => onTap(HomeTab.settings),
+                        ),
+                      ],
                     ),
-                    _NavItem(
-                      icon: Icons.photo_library_outlined,
-                      activeIcon: Icons.photo_library_rounded,
-                      label: 'Phone',
-                      color: sky,
-                      selected: tab == HomeTab.phone,
-                      onTap: () => onTap(HomeTab.phone),
-                    ),
-                    _NavItem(
-                      icon: Icons.favorite_border_rounded,
-                      activeIcon: Icons.favorite_rounded,
-                      label: 'Selected',
-                      color: accent,
-                      count: scope.uploads.selected.length + scope.uploads.copying,
-                      selected: tab == HomeTab.selected,
-                      onTap: () => onTap(HomeTab.selected),
-                    ),
-                    _NavItem(
-                      icon: Icons.outbox_outlined,
-                      activeIcon: Icons.outbox_rounded,
-                      label: 'Upload',
-                      color: grass,
-                      count: scope.uploads.queued.length,
-                      selected: tab == HomeTab.upload,
-                      onTap: () => onTap(HomeTab.upload),
-                    ),
-                    _NavItem(
-                      icon: Icons.settings_outlined,
-                      activeIcon: Icons.settings_rounded,
-                      label: 'Settings',
-                      color: grape,
-                      dot: scope.updater.available,
-                      selected: tab == HomeTab.settings,
-                      onTap: () => onTap(HomeTab.settings),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          const Positioned(left: 24, top: -4, child: LionPaws()),
+        ],
       ),
     );
   }

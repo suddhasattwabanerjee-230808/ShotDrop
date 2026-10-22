@@ -303,6 +303,8 @@ void main() {
     await shot(tester, '2b_selected');
     await tester.tap(bar(Icons.settings_outlined));
     await shot(tester, '2c_settings');
+    await tester.drag(find.byType(ListView).hitTestable(), const Offset(0, -3000));
+    await shot(tester, '2c2_settings_end');
     // The Phone Gallery: asks first, then the phone's photos.
     await tester.tap(bar(Icons.photo_library_outlined));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));

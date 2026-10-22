@@ -11,6 +11,7 @@ import '../card_channel.dart';
 import '../edit/post_shape.dart';
 import '../edit/story.dart';
 import '../models.dart';
+import '../props.dart';
 import '../publish.dart';
 import '../share_channel.dart';
 import '../storage.dart';
@@ -726,6 +727,27 @@ class _DoneBadge extends StatelessWidget {
           Positioned.fill(
             child: CustomPaint(painter: _ConfettiBurst(v, rainbow)),
           ),
+          // A lion popping up to cheer, and balloons floating up beside it.
+          Positioned(
+            left: 4,
+            bottom: 0,
+            child: Opacity(
+              opacity: ((v - 0.35) * 4).clamp(0.0, 1.0),
+              child: Transform.translate(
+                offset: Offset(0, 24 * (1 - Curves.easeOutBack.transform(((v - 0.35) * 2).clamp(0.0, 1.0)))),
+                child: const Prop(PropKind.lion, size: 50),
+              ),
+            ),
+          ),
+          for (final (right, size, phase, tint) in [(8.0, 28.0, 0.0, coral), (34.0, 22.0, 0.4, grape)])
+            Positioned(
+              right: right,
+              top: 6 + 60 * (1 - Curves.easeOut.transform(v)),
+              child: Opacity(
+                opacity: v.clamp(0.0, 1.0),
+                child: Prop(PropKind.balloon, size: size, phase: phase, tint: tint),
+              ),
+            ),
           Transform.scale(
             scale: Curves.elasticOut.transform((v * 2.2).clamp(0.0, 1.0)),
             child: Container(

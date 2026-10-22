@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'card_channel.dart';
 import 'models.dart';
+import 'props.dart';
 import 'stores.dart';
 import 'update.dart';
 import 'theme.dart';
@@ -300,7 +301,7 @@ class _FunIconState extends State<FunIcon> with SingleTickerProviderStateMixin {
               // Sparkles around the blob, twinkling out of step with the bob.
               for (final (dx, dy, size, colour, phase) in [
                 (-0.62, -0.42, 16.0, sunny, 0.0),
-                (0.64, -0.3, 11.0, sky, 0.5),
+                (-0.2, -0.95, 11.0, sky, 0.5),
                 (0.58, 0.5, 14.0, grass, 0.25),
                 (-0.6, 0.46, 9.0, grape, 0.75),
               ])
@@ -311,6 +312,8 @@ class _FunIconState extends State<FunIcon> with SingleTickerProviderStateMixin {
                     child: CustomPaint(size: Size.square(size), painter: _SparklePainter(colour)),
                   ),
                 ),
+              // A kite flying off the top corner.
+              const Align(alignment: Alignment(0.98, -1.05), child: Prop(PropKind.kite, size: 26, angle: 0.3)),
               Transform.translate(
                 offset: Offset(0, -5 + 10 * t),
                 child: Transform.rotate(angle: -0.06 + 0.12 * t, child: child),
@@ -458,7 +461,30 @@ class _BackdropPainter extends CustomPainter {
           canvas.restore();
       }
     }
+    // Cartoon props round the edges, where the middle's content leaves room.
+    for (final (kind, fx, fy, width, turn) in _props) {
+      final c = Offset(size.width * fx, size.height * fy);
+      final rect = Rect.fromCenter(center: c, width: width, height: width / propAspect(kind));
+      canvas.save();
+      canvas.translate(c.dx, c.dy);
+      canvas.rotate(turn);
+      canvas.translate(-c.dx, -c.dy);
+      canvas.saveLayer(rect.inflate(4), Paint()..color = Color.fromRGBO(0, 0, 0, light ? 0.9 : 0.8));
+      paintProp(canvas, kind, rect, tint: kind == PropKind.balloon ? grape : null);
+      canvas.restore();
+      canvas.restore();
+    }
   }
+
+  static const _props = [
+    (PropKind.kite, 0.86, 0.17, 30.0, 0.2),
+    (PropKind.lion, 0.09, 0.27, 38.0, -0.12),
+    (PropKind.cloud, 0.8, 0.35, 48.0, 0.0),
+    (PropKind.butterfly, 0.1, 0.49, 26.0, -0.25),
+    (PropKind.balloon, 0.91, 0.53, 22.0, 0.1),
+    (PropKind.bird, 0.1, 0.8, 30.0, 0.0),
+    (PropKind.plane, 0.87, 0.8, 36.0, -0.2),
+  ];
 
   @override
   bool shouldRepaint(_BackdropPainter old) =>

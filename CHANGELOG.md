@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.1] - 2026-10-22 (build 16)
+
+Little cartoon friends around the app. Appearance only, as before.
+
+- **Props in the background.** A lion, a kite, a smiling cloud, a butterfly, a balloon, a bird and a paper plane sit round the edges of every tab, among the confetti.
+- **A lion peeking over the tab bar**, paws on its edge. Every so often it pops up and tilts its head.
+- **A kite flying off the bouncing picture** on the empty and waiting screens.
+- **A cheering lion and balloons** with the tick when posting is done.
+- **A lion flying a kite under a rainbow** at the bottom of Settings: Happy Shooting!
+
 ## [0.7.0] - 2026-10-22 (build 15)
 
 A playful new look. Only the appearance changes: every screen works exactly as before.
