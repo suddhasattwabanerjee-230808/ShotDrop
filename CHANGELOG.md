@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.4] - 2026-10-22 (build 14)
+
+Light mode.
+
+- **Light and dark, on every screen.** A sun / moon button in the top bar of every screen (the galleries, Selected, Upload, Settings, the viewer, the editor, publishing and setup) switches between the camera-screen dark and a warm paper-white light mode. The new colours spread out from the button in a circle, and nothing is lost: an edit in progress, the scroll position and anything picked stay as they were.
+- **ShotDrop remembers it.** It opens in the mode you left it in. Dark is still the default.
+- In light mode the yellow is a deeper gold, so buttons and icons stay readable on white; the viewer and the editor follow the mode too.
+
 ## [0.6.3] - 2026-10-22 (build 13)
 
 A truthful crop, a sharper date filter, and a faster card.

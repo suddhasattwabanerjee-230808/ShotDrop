@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../edit/filters.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
 import 'publish_screen.dart';
@@ -86,7 +87,7 @@ class _UploadScreenState extends State<UploadScreen> {
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
     return Scaffold(
-      appBar: AppBar(title: const Text('Upload Folder')),
+      appBar: AppBar(title: const Text('Upload Folder'), actions: const [ThemeToggle()]),
       body: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
@@ -146,14 +147,14 @@ class _UploadScreenState extends State<UploadScreen> {
                     return Dismissible(
                       key: ValueKey(item.shotId),
                       onDismissed: (d) => d == DismissDirection.startToEnd ? _setAside(item) : _delete(item),
-                      background: const _SwipeBackground(
+                      background: _SwipeBackground(
                         left: true,
                         color: surfaceHigh,
                         icon: Icons.favorite_rounded,
                         label: 'Move To Selected',
                         fg: accent,
                       ),
-                      secondaryBackground: const _SwipeBackground(
+                      secondaryBackground: _SwipeBackground(
                         left: false,
                         color: negative,
                         icon: Icons.delete_outline_rounded,
@@ -179,7 +180,7 @@ class _UploadScreenState extends State<UploadScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('CAPTION', style: sectionLabel),
+                      Text('CAPTION', style: sectionLabel),
                       const SizedBox(height: 8),
                       TextField(
                         controller: _caption,
@@ -220,7 +221,7 @@ class _UploadScreenState extends State<UploadScreen> {
                       child: Text(
                         '$left unselected ${left == 1 ? 'photo goes' : 'photos go'} back to Selected once you\'ve posted',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                       ),
                     ),
                   FilledButton.icon(
@@ -312,7 +313,7 @@ class _UploadRow extends StatelessWidget {
                     File(item.previewPath),
                     fit: BoxFit.cover,
                     cacheWidth: 216,
-                    errorBuilder: (_, _, _) => const ColoredBox(color: surfaceHigh),
+                    errorBuilder: (_, _, _) => ColoredBox(color: surfaceHigh),
                   ),
                 ),
               ),
@@ -326,23 +327,23 @@ class _UploadRow extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       '${shortDay(item.taken)} · ${clock(item.taken)}',
-                      style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       _summary,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w700),
+                      style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w700),
                     ),
                   ],
                 ),
               ),
-              IconButton(tooltip: 'Edit Again', onPressed: onEdit, icon: const Icon(Icons.edit_rounded, color: ink)),
+              IconButton(tooltip: 'Edit Again', onPressed: onEdit, icon: Icon(Icons.edit_rounded, color: ink)),
               ReorderableDragStartListener(
                 index: index,
-                child: const Padding(
-                  padding: EdgeInsets.all(10),
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
                   child: Icon(Icons.drag_indicator_rounded, color: muted),
                 ),
               ),

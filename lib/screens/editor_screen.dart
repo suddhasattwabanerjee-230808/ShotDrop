@@ -12,6 +12,7 @@ import '../edit/render.dart';
 import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../pose_channel.dart';
 import '../prefetch.dart';
 import '../stores.dart';
@@ -386,9 +387,9 @@ class _EditorScreenState extends State<EditorScreen> {
         if (!didPop) _close();
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: paper,
         appBar: AppBar(
-          backgroundColor: Colors.black,
+          backgroundColor: paper,
           leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: _close),
           titleSpacing: 0,
           title: Column(
@@ -397,15 +398,16 @@ class _EditorScreenState extends State<EditorScreen> {
               Text(_target.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
               Text(
                 multi ? 'Photo ${_index + 1} Of ${widget.targets.length}' : 'Edit Before Upload',
-                style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
               ),
             ],
           ),
           actions: [
+            const ThemeToggle(),
             if (multi)
               TextButton(
                 onPressed: _status == null ? _next : null,
-                child: const Text('Skip', style: TextStyle(color: muted)),
+                child: Text('Skip', style: TextStyle(color: muted)),
               ),
             Padding(
               padding: const EdgeInsets.only(right: 12, left: 4),
@@ -501,7 +503,7 @@ class _EditorScreenState extends State<EditorScreen> {
           right: 0,
           child: Center(
             child: Container(
-              decoration: BoxDecoration(color: const Color(0xCC16161B), borderRadius: BorderRadius.circular(24)),
+              decoration: BoxDecoration(color: surface.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(24)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -545,7 +547,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _loadingPill() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-    decoration: BoxDecoration(color: const Color(0xE616161B), borderRadius: BorderRadius.circular(24)),
+    decoration: BoxDecoration(color: surface.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(24)),
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -557,7 +559,7 @@ class _EditorScreenState extends State<EditorScreen> {
   );
 
   Widget _busy() => ColoredBox(
-    color: const Color(0xAA000000),
+    color: paper.withValues(alpha: 0.7),
     child: Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -693,13 +695,15 @@ class _ImagePainter extends CustomPainter {
 /// [dim] (hidden at rest, so what shows is the cropped photo; a glimpse
 /// while moving, to show what could come in).
 class _CropPainter extends CustomPainter {
-  _CropPainter(this.image, this.params, this.photo, this.frame, this.dim, {this.finished, this.guides = false});
+  _CropPainter(this.image, this.params, this.photo, this.frame, this.dim, {this.finished, this.guides = false})
+    : shade = paper;
   final ui.Image image;
   final EditParams params;
   final Rect photo, frame;
   final double dim; // 0..1
   final ui.Image? finished; // the cropped photo for exactly this crop: shown with the body edits inside the frame
   final bool guides; // thirds, while moving
+  final Color shade; // what covers the photo outside the frame: the page's own colour
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -726,7 +730,7 @@ class _CropPainter extends CustomPainter {
 
     canvas.drawPath(
       Path.combine(PathOperation.difference, Path()..addRect(screen.inflate(1)), Path()..addRect(frame)),
-      Paint()..color = Colors.black.withValues(alpha: dim),
+      Paint()..color = shade.withValues(alpha: dim),
     );
     if (guides) {
       final thin = Paint()
@@ -769,7 +773,8 @@ class _CropPainter extends CustomPainter {
       old.frame != frame ||
       old.dim != dim ||
       old.finished != finished ||
-      old.guides != guides;
+      old.guides != guides ||
+      old.shade != shade;
 }
 
 /// The cropped photo with the body tools and colour applied (the Adjust view).
@@ -1026,7 +1031,7 @@ class _CropTools extends StatelessWidget {
                 icon: const Icon(Icons.flip_rounded),
               ),
               const SizedBox(width: 8),
-              const Icon(Icons.straighten_rounded, size: 18, color: muted),
+              Icon(Icons.straighten_rounded, size: 18, color: muted),
               Expanded(
                 child: Slider(
                   min: -20,
@@ -1062,7 +1067,7 @@ class _CropTools extends StatelessWidget {
                   feedOk
                       ? 'Fits An Instagram Post'
                       : 'Too ${aspect < 0.8 ? 'tall' : 'wide'} for an Instagram post (4:5 to 1.91:1). Fine for a story.',
-                  style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1203,7 +1208,7 @@ class _AdjustToolsState extends State<_AdjustTools> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(9),
                 child: thumb == null
-                    ? const ColoredBox(color: surfaceHigh)
+                    ? ColoredBox(color: surfaceHigh)
                     : ColorFiltered(
                         colorFilter: ColorFilter.matrix(f.build()),
                         child: RawImage(image: thumb, fit: BoxFit.cover, filterQuality: FilterQuality.low),

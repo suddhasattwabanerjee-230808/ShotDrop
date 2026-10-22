@@ -110,7 +110,7 @@ class _DateFilterSheetState extends State<DateFilterSheet> {
           children: [
             const Text('Show Photos From', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(height: 18),
-            const Text('DAYS', style: sectionLabel),
+            Text('DAYS', style: sectionLabel),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -130,7 +130,7 @@ class _DateFilterSheetState extends State<DateFilterSheet> {
               ],
             ),
             const SizedBox(height: 22),
-            const Text('TIME OF DAY', style: sectionLabel),
+            Text('TIME OF DAY', style: sectionLabel),
             const SizedBox(height: 10),
             GridView.count(
               crossAxisCount: 3,

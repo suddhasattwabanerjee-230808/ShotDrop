@@ -15,10 +15,14 @@ import 'package:shotdrop/models.dart';
 import 'package:shotdrop/screens/editor_screen.dart';
 import 'package:shotdrop/screens/viewer_screen.dart';
 import 'package:shotdrop/stores.dart';
+import 'package:shotdrop/theme_switch.dart';
 import 'package:shotdrop/update.dart';
 import 'package:shotdrop/widgets.dart';
 
 const outDir = String.fromEnvironment('PREVIEW_DIR');
+// LIGHT=true: switch to light mode with the Gallery's sun button, so the
+// screens after it render light.
+const light = bool.fromEnvironment('LIGHT');
 // Optional: a phone screenshot with a person in it, and the y range (in
 // pixels) of the photo within it, used as the body tools' test photo.
 const realPhoto = String.fromEnvironment('REAL_PHOTO');
@@ -270,6 +274,19 @@ void main() {
     await tester.tap(find.text('Continue'));
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '1_grid');
+    if (light) {
+      await tester.tap(find.byType(ThemeToggle).first);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300))); // the screen's picture
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.runAsync(() async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(find.byKey(const ValueKey('preview-root')));
+        final png = await (await boundary.toImage(pixelRatio: 1.25)).toByteData(format: ui.ImageByteFormat.png);
+        File('$outDir/1a_switching.png').writeAsBytesSync(png!.buffer.asUint8List());
+      });
+      await tester.pump(const Duration(milliseconds: 600));
+      await shot(tester, '1b_grid_light');
+    }
 
     // Pick a few and keep them in Selected
     await tester.longPress(find.byType(CardImage).at(0));

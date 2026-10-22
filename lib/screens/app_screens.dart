@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_channel.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../update.dart';
 import '../widgets.dart';
 
@@ -61,7 +62,7 @@ class _UpdateSheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 updater.current.isEmpty ? '' : 'This Phone Has ${updater.current}',
-                style: const TextStyle(color: muted, fontWeight: FontWeight.w600),
+                style: TextStyle(color: muted, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 16),
               if (updater.checking && latest == null)
@@ -101,7 +102,7 @@ class _UpdateSheet extends StatelessWidget {
                   Text(
                     'Downloading… ${(progress * 100).round()}% Of ${(latest.apkSize / 1e6).toStringAsFixed(0)} MB',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: muted, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: muted, fontWeight: FontWeight.w600),
                   ),
                 ] else
                   FilledButton.icon(
@@ -110,7 +111,7 @@ class _UpdateSheet extends StatelessWidget {
                     label: Text('Update To ${latest.version}'),
                   ),
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Android asks you to confirm the install. Your Upload folder and settings stay as they are.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 12, color: muted),
@@ -195,7 +196,7 @@ class _CaptionHelperScreenState extends State<CaptionHelperScreen> with WidgetsB
   Widget build(BuildContext context) {
     final on = _on;
     return Scaffold(
-      appBar: AppBar(title: const Text('Caption Auto-Paste')),
+      appBar: AppBar(title: const Text('Caption Auto-Paste'), actions: const [ThemeToggle()]),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
@@ -229,16 +230,16 @@ class _CaptionHelperScreenState extends State<CaptionHelperScreen> with WidgetsB
             ),
           ),
           const SizedBox(height: 22),
-          const Text('WHY A SETTING', style: sectionLabel),
+          Text('WHY A SETTING', style: sectionLabel),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Instagram throws away captions that other apps send. The only way in is an Accessibility helper, '
             'which Android lets only you switch on. ShotDrop\'s helper looks at Instagram only, and only fills '
             'the caption box right after ShotDrop opens a new post.',
             style: TextStyle(color: muted, height: 1.45),
           ),
           const SizedBox(height: 22),
-          const Text('SWITCH IT ON', style: sectionLabel),
+          Text('SWITCH IT ON', style: sectionLabel),
           const SizedBox(height: 10),
           const _Step(
             n: 1,
@@ -266,7 +267,7 @@ class _CaptionHelperScreenState extends State<CaptionHelperScreen> with WidgetsB
             label: const Text('Open App Info'),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'With it off, ShotDrop still copies the caption: long-press the caption box in Instagram and tap Paste.',
             style: TextStyle(fontSize: 12, color: muted, height: 1.4),
           ),
@@ -291,7 +292,7 @@ class _Step extends StatelessWidget {
           width: 26,
           height: 26,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(color: accent, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
           child: Text('$n', style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800)),
         ),
         const SizedBox(width: 12),

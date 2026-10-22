@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_channel.dart';
 import '../stores.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'grid_screen.dart';
 
@@ -43,6 +44,7 @@ class _PhoneScreenState extends State<PhoneScreen> with WidgetsBindingObserver {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Phone Gallery'),
+          actions: const [ThemeToggle()],
           bottom: const GalleryToggle(current: Gallery.phone),
         ),
         body: AnimatedSwitcher(

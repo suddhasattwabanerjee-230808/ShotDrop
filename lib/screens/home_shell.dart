@@ -163,7 +163,7 @@ class _NavBar extends StatelessWidget {
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(34),
-          boxShadow: const [BoxShadow(color: Color(0x99000000), blurRadius: 24, offset: Offset(0, 8))],
+          boxShadow: [BoxShadow(color: Color(isLight ? 0x24000000 : 0x99000000), blurRadius: 24, offset: const Offset(0, 8))],
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(34),
@@ -174,7 +174,7 @@ class _NavBar extends StatelessWidget {
               decoration: BoxDecoration(
                 color: surfaceHigh.withValues(alpha: 0.86),
                 borderRadius: BorderRadius.circular(34),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                border: Border.all(color: ink.withValues(alpha: 0.08)),
               ),
               child: ListenableBuilder(
                 listenable: Listenable.merge([scope.uploads, scope.updater]),

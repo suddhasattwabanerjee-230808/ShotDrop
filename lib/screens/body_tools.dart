@@ -444,14 +444,14 @@ class BodyPanel extends StatelessWidget {
               n <= 1 ? 'Drag The Line Or Its Brackets To Move The Area' : 'Tap Another Line To Change That Area',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600, height: 1.3),
+              style: TextStyle(fontSize: 11, color: muted, fontWeight: FontWeight.w600, height: 1.3),
             ),
           ),
           IconButton(
             tooltip: 'Remove This Area',
             visualDensity: VisualDensity.compact,
             onPressed: n == 0 ? null : () => onCommit(params.copyWith(slims: params.slims.sublist(0, n - 1))),
-            icon: const Icon(Icons.delete_outline_rounded, size: 20, color: muted),
+            icon: Icon(Icons.delete_outline_rounded, size: 20, color: muted),
           ),
           TextButton.icon(
             onPressed: onNewSlim,
@@ -470,7 +470,7 @@ class BodyPanel extends StatelessWidget {
       children: [
         Row(
           children: [
-            TextButton(onPressed: onCancelSlim, child: const Text('Cancel', style: TextStyle(color: muted))),
+            TextButton(onPressed: onCancelSlim, child: Text('Cancel', style: TextStyle(color: muted))),
             const Spacer(),
             _ConfirmButton(onTap: onConfirmSlim),
             const Spacer(),
@@ -480,7 +480,7 @@ class BodyPanel extends StatelessWidget {
         const SizedBox(height: 12),
         Text(
           pose == PoseStatus.found ? 'Select the waist area.' : 'Select the waist area: drag the line onto the body.',
-          style: const TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w600),
+          style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w600),
         ),
       ],
     ),
@@ -530,7 +530,7 @@ class _ValueSlider extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Padding(padding: EdgeInsets.only(bottom: 12), child: Icon(Icons.remove_rounded, size: 20, color: muted)),
+          Padding(padding: const EdgeInsets.only(bottom: 12), child: Icon(Icons.remove_rounded, size: 20, color: muted)),
           Expanded(
             child: LayoutBuilder(
               builder: (context, box) {
@@ -583,7 +583,7 @@ class _ValueSlider extends StatelessWidget {
               },
             ),
           ),
-          const Padding(padding: EdgeInsets.only(bottom: 12), child: Icon(Icons.add_rounded, size: 20, color: muted)),
+          Padding(padding: const EdgeInsets.only(bottom: 12), child: Icon(Icons.add_rounded, size: 20, color: muted)),
         ],
       ),
     );
@@ -623,7 +623,7 @@ class _ToolButton extends StatelessWidget {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(color: accent, shape: BoxShape.circle),
+                      decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
                     ),
                   ),
               ],

@@ -589,6 +589,7 @@ class AppSettings extends ChangeNotifier {
   bool openOnCard = true; // open ShotDrop when a card is plugged in
   bool autoTidy = true; // clear what ShotDrop no longer needs, at launch and after publishing
   int keepPostedDays = 7; // how long copies of posted photos stay (0 = until cleared by hand)
+  bool lightMode = false; // light colours instead of the camera-screen dark
 
   Future<void> load() async {
     final p = await prefs();
@@ -601,6 +602,7 @@ class AppSettings extends ChangeNotifier {
     openOnCard = p.getBool('${_prefix}openOnCard') ?? openOnCard;
     autoTidy = p.getBool('${_prefix}autoTidy') ?? autoTidy;
     keepPostedDays = p.getInt('${_prefix}keepPostedDays') ?? keepPostedDays;
+    lightMode = p.getBool('${_prefix}lightMode') ?? lightMode;
     notifyListeners();
   }
 
@@ -614,6 +616,7 @@ class AppSettings extends ChangeNotifier {
     bool? openOnCard,
     bool? autoTidy,
     int? keepPostedDays,
+    bool? lightMode,
   }) async {
     final p = await prefs();
     Future<void> put(String key, Object? v) async {
@@ -636,6 +639,7 @@ class AppSettings extends ChangeNotifier {
     this.openOnCard = openOnCard ?? this.openOnCard;
     this.autoTidy = autoTidy ?? this.autoTidy;
     this.keepPostedDays = keepPostedDays ?? this.keepPostedDays;
+    this.lightMode = lightMode ?? this.lightMode;
     notifyListeners();
     await put('portraitAt45', portraitAt45);
     await put('saveEdge', saveEdge);
@@ -646,5 +650,6 @@ class AppSettings extends ChangeNotifier {
     await put('openOnCard', openOnCard);
     await put('autoTidy', autoTidy);
     await put('keepPostedDays', keepPostedDays);
+    await put('lightMode', lightMode);
   }
 }

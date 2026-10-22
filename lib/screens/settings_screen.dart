@@ -9,6 +9,7 @@ import '../publish.dart';
 import '../storage.dart';
 import '../stores.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
 import 'home_shell.dart';
@@ -140,7 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     final scope = AppScope.of(context);
     final settings = scope.settings;
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('Settings'), actions: const [ThemeToggle()]),
       body: ListenableBuilder(
         listenable: Listenable.merge([settings, scope.social, scope.card, scope.updater]),
         builder: (context, _) => ListView(
@@ -344,7 +345,7 @@ class _Section extends StatelessWidget {
           child: Column(
             children: [
               for (final (i, c) in children.indexed) ...[
-                if (i > 0) const Divider(height: 1, indent: 56, color: line),
+                if (i > 0) Divider(height: 1, indent: 56, color: line),
                 c,
               ],
             ],
@@ -368,8 +369,8 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
     leading: leading ?? Icon(icon, color: accent),
     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-    subtitle: subtitle == null ? null : Text(subtitle!, style: const TextStyle(color: muted, fontSize: 12)),
-    trailing: trailing ?? (onTap == null ? null : const Icon(Icons.chevron_right_rounded, color: muted)),
+    subtitle: subtitle == null ? null : Text(subtitle!, style: TextStyle(color: muted, fontSize: 12)),
+    trailing: trailing ?? (onTap == null ? null : Icon(Icons.chevron_right_rounded, color: muted)),
     onTap: onTap,
   );
 }
@@ -386,7 +387,7 @@ class _Switch extends StatelessWidget {
   Widget build(BuildContext context) => SwitchListTile(
     secondary: Icon(icon, color: accent),
     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-    subtitle: subtitle == null ? null : Text(subtitle!, style: const TextStyle(color: muted, fontSize: 12)),
+    subtitle: subtitle == null ? null : Text(subtitle!, style: TextStyle(color: muted, fontSize: 12)),
     value: value,
     onChanged: onChanged,
   );
@@ -422,7 +423,7 @@ class _Choice<T> extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                if (detail != null) Text(detail, style: const TextStyle(color: muted, fontSize: 12)),
+                if (detail != null) Text(detail, style: TextStyle(color: muted, fontSize: 12)),
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -475,5 +476,5 @@ class _Dot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Container(width: 10, height: 10, decoration: const BoxDecoration(color: accent, shape: BoxShape.circle));
+      Container(width: 10, height: 10, decoration: BoxDecoration(color: accent, shape: BoxShape.circle));
 }

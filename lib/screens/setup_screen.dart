@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../share_channel.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'home_shell.dart';
 
@@ -80,8 +81,9 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
           if (widget.firstRun)
             TextButton(
               onPressed: _finish,
-              child: const Text('Skip', style: TextStyle(color: muted)),
+              child: Text('Skip', style: TextStyle(color: muted)),
             ),
+          const ThemeToggle(),
         ],
       ),
       body: ListenableBuilder(
@@ -91,7 +93,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
           children: [
             const _Hero(),
             const SizedBox(height: 20),
-            const Text('INSTAGRAM', style: sectionLabel),
+            Text('INSTAGRAM', style: sectionLabel),
             const SizedBox(height: 8),
             _Card(
               children: [
@@ -103,7 +105,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                 const Divider(height: 24),
                 const Text('Your Username', style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Shown when you publish, so you know which account Instagram will post to. '
                   'Instagram posts to whichever account is open in the app.',
                   style: TextStyle(fontSize: 13, color: muted, height: 1.4),
@@ -113,15 +115,15 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   controller: _handle,
                   autocorrect: false,
                   textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     prefixIcon: Padding(
-                      padding: EdgeInsets.only(left: 16, right: 4),
+                      padding: const EdgeInsets.only(left: 16, right: 4),
                       child: Text(
                         '@',
                         style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: muted),
                       ),
                     ),
-                    prefixIconConstraints: BoxConstraints(minWidth: 0, minHeight: 0),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
                     hintText: 'yourname',
                   ),
                   onSubmitted: (v) => _social.save(handle: v),
@@ -129,7 +131,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
               ],
             ),
             const SizedBox(height: 20),
-            const Text('FACEBOOK', style: sectionLabel),
+            Text('FACEBOOK', style: sectionLabel),
             const SizedBox(height: 8),
             _Card(
               children: [
@@ -138,7 +140,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Instagram can copy every post and story to your Facebook profile by itself. Turn it on once:',
                   style: TextStyle(fontSize: 13, color: muted, height: 1.4),
                 ),
@@ -162,7 +164,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   value: _social.instagramSharesToFacebook,
                   onChanged: (v) => _social.save(instagramSharesToFacebook: v),
                   title: const Text("It's On", style: TextStyle(fontWeight: FontWeight.w700)),
-                  subtitle: const Text(
+                  subtitle: Text(
                     'Otherwise ShotDrop can open Facebook for each post too.',
                     style: TextStyle(fontSize: 12, color: muted),
                   ),
@@ -197,28 +199,28 @@ class _Hero extends StatelessWidget {
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       borderRadius: BorderRadius.circular(22),
-      gradient: const LinearGradient(
+      gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF3B2A12), Color(0xFF16161B)],
+        colors: isLight ? const [Color(0xFFFBEBC2), Color(0xFFFFFFFF)] : const [Color(0xFF3B2A12), Color(0xFF16161B)],
       ),
       border: Border.all(color: line),
     ),
-    child: const Row(
+    child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Flow(),
-        SizedBox(width: 16),
+        const _Flow(),
+        const SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Card → Edit → Instagram', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              SizedBox(height: 6),
+              const Text('Card → Edit → Instagram', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
               Text(
                 'Instagram doesn\'t let other apps sign in to personal accounts, so ShotDrop does everything up to the '
                 'last tap: it opens Instagram with your edited photos loaded, and you tap Share.',
-                style: TextStyle(fontSize: 13, color: Color(0xCCFFFFFF), height: 1.45),
+                style: TextStyle(fontSize: 13, color: ink.withValues(alpha: 0.8), height: 1.45),
               ),
             ],
           ),
@@ -261,7 +263,7 @@ class _Card extends StatelessWidget {
     color: surface,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(20),
-      side: const BorderSide(color: line),
+      side: BorderSide(color: line),
     ),
     child: Padding(
       padding: const EdgeInsets.all(16),
@@ -285,13 +287,13 @@ class _AppRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-            if (subtitle != null) Text(subtitle!, style: const TextStyle(fontSize: 12, color: muted)),
+            if (subtitle != null) Text(subtitle!, style: TextStyle(fontSize: 12, color: muted)),
           ],
         ),
       ),
       switch (installed) {
         null => const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-        true => const PhotoBadge(label: 'INSTALLED', icon: Icons.check_rounded, color: positive, fg: Color(0xFF06210F)),
+        true => PhotoBadge(label: 'INSTALLED', icon: Icons.check_rounded, color: positive, fg: const Color(0xFF06210F)),
         false => TextButton(onPressed: onInstall, child: const Text('Install')),
       },
     ],
@@ -313,10 +315,10 @@ class _Step extends StatelessWidget {
           width: 22,
           height: 22,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(color: surfaceHigh, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: surfaceHigh, shape: BoxShape.circle),
           child: Text(
             '$n',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: accent),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: accent),
           ),
         ),
         const SizedBox(width: 10),

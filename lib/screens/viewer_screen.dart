@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../prefetch.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
 
@@ -99,151 +100,156 @@ class _ViewerScreenState extends State<ViewerScreen> {
   @override
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
-    return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          PageView.builder(
-            controller: _pages,
-            physics: _zoomed ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
-            itemCount: widget.shots.length,
-            onPageChanged: (i) {
-              setState(() {
-                _index = i;
-                _zoomed = false;
-              });
-              _prefetch(i);
-            },
-            itemBuilder: (context, i) => _ZoomablePhoto(
-              shot: widget.shots[i],
-              onZoomChanged: (z) {
-                if (z != _zoomed) setState(() => _zoomed = z);
+    // No app bar here to set the status bar's icons, so: dark on light, light on dark.
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
+      child: Scaffold(
+        backgroundColor: paper,
+        extendBodyBehindAppBar: true,
+        body: Stack(
+          children: [
+            PageView.builder(
+              controller: _pages,
+              physics: _zoomed ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+              itemCount: widget.shots.length,
+              onPageChanged: (i) {
+                setState(() {
+                  _index = i;
+                  _zoomed = false;
+                });
+                _prefetch(i);
               },
-              onTap: () => setState(() => _chrome = !_chrome),
+              itemBuilder: (context, i) => _ZoomablePhoto(
+                shot: widget.shots[i],
+                onZoomChanged: (z) {
+                  if (z != _zoomed) setState(() => _zoomed = z);
+                },
+                onTap: () => setState(() => _chrome = !_chrome),
+              ),
             ),
-          ),
-          // Top bar
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: AnimatedOpacity(
-              opacity: _chrome ? 1 : 0,
-              duration: const Duration(milliseconds: 180),
-              child: IgnorePointer(
-                ignoring: !_chrome,
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Color(0xCC000000), Color(0x00000000)],
+            // Top bar
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: AnimatedOpacity(
+                opacity: _chrome ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: IgnorePointer(
+                  ignoring: !_chrome,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [paper.withValues(alpha: 0.8), paper.withValues(alpha: 0)],
+                      ),
                     ),
-                  ),
-                  child: SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 4, 16, 24),
-                      child: Row(
-                        children: [
-                          const BackButton(color: Colors.white),
-                          Expanded(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(_shot.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-                                Text(
-                                  '${shortDay(_shot.taken)} · ${clock(_shot.taken)} · ${fileSize(_shot.primary.size)}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xCCFFFFFF),
-                                    fontWeight: FontWeight.w600,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 16, 24),
+                        child: Row(
+                          children: [
+                            BackButton(color: ink),
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(_shot.name, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                                  Text(
+                                    '${shortDay(_shot.taken)} · ${clock(_shot.taken)} · ${fileSize(_shot.primary.size)}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: ink.withValues(alpha: 0.8),
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
-                          Text(
-                            '${_index + 1} / ${widget.shots.length}',
-                            style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xCCFFFFFF)),
-                          ),
-                          const SizedBox(width: 4),
-                          _HeartButton(shot: _shot),
-                        ],
+                            Text(
+                              '${_index + 1} / ${widget.shots.length}',
+                              style: TextStyle(fontWeight: FontWeight.w700, color: ink.withValues(alpha: 0.8)),
+                            ),
+                            const SizedBox(width: 4),
+                            ThemeToggle(color: ink),
+                            _HeartButton(shot: _shot),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          // Bottom bar
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: AnimatedSlide(
-              offset: _chrome ? Offset.zero : const Offset(0, 1),
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOutCubic,
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Color(0xE6000000), Color(0x00000000)],
+            // Bottom bar
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: AnimatedSlide(
+                offset: _chrome ? Offset.zero : const Offset(0, 1),
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [paper.withValues(alpha: 0.9), paper.withValues(alpha: 0)],
+                    ),
                   ),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 32, 16, 12),
-                    child: ListenableBuilder(
-                      listenable: uploads,
-                      builder: (context, _) {
-                        final queued = uploads.contains(_shot.id);
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                if (_shot.jpg != null) const PhotoBadge(label: 'JPG'),
-                                if (_shot.hasRaw) ...[const SizedBox(width: 6), const PhotoBadge(label: 'NEF')],
-                                if (queued) ...[
-                                  const SizedBox(width: 6),
-                                  const PhotoBadge(
-                                    label: 'IN UPLOAD FOLDER',
-                                    icon: Icons.check_rounded,
-                                    color: positive,
-                                    fg: Color(0xFF06210F),
-                                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 32, 16, 12),
+                      child: ListenableBuilder(
+                        listenable: uploads,
+                        builder: (context, _) {
+                          final queued = uploads.contains(_shot.id);
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_shot.jpg != null) const PhotoBadge(label: 'JPG'),
+                                  if (_shot.hasRaw) ...[const SizedBox(width: 6), const PhotoBadge(label: 'NEF')],
+                                  if (queued) ...[
+                                    const SizedBox(width: 6),
+                                    PhotoBadge(
+                                      label: 'IN UPLOAD FOLDER',
+                                      icon: Icons.check_rounded,
+                                      color: positive,
+                                      fg: const Color(0xFF06210F),
+                                    ),
+                                  ],
                                 ],
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            SizedBox(
-                              width: double.infinity,
-                              child: _shot.editable
-                                  ? FilledButton.icon(
-                                      onPressed: _edit,
-                                      icon: Icon(queued ? Icons.tune_rounded : Icons.auto_fix_high_rounded),
-                                      label: Text(queued ? 'Edit Again' : 'Edit Before Upload'),
-                                    )
-                                  : const OutlinedButton(onPressed: null, child: Text('RAW Only: Can\'t Be Edited')),
-                            ),
-                          ],
-                        );
-                      },
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: _shot.editable
+                                    ? FilledButton.icon(
+                                        onPressed: _edit,
+                                        icon: Icon(queued ? Icons.tune_rounded : Icons.auto_fix_high_rounded),
+                                        label: Text(queued ? 'Edit Again' : 'Edit Before Upload'),
+                                      )
+                                    : const OutlinedButton(onPressed: null, child: Text('RAW Only: Can\'t Be Edited')),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -354,7 +360,7 @@ class _HeartButton extends StatelessWidget {
             child: Icon(
               kept || queued ? Icons.favorite_rounded : Icons.favorite_border_rounded,
               key: ValueKey(kept || queued),
-              color: kept || queued ? accent : Colors.white,
+              color: kept || queued ? accent : ink,
               size: 26,
             ),
           ),

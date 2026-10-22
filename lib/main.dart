@@ -8,6 +8,7 @@ import 'screens/home_shell.dart';
 import 'screens/setup_screen.dart';
 import 'stores.dart';
 import 'theme.dart';
+import 'theme_switch.dart';
 import 'update.dart';
 import 'widgets.dart';
 
@@ -34,6 +35,7 @@ Future<void> main() async {
         reportError('Starting up ($name): $e', st);
       }
     }
+    usePalette(light: settings.lightMode);
     card.load();
     // In the background: a dot on Settings if there's a new version.
     if (settings.checkUpdates) updater.check();
@@ -71,6 +73,9 @@ class ShotDropApp extends StatelessWidget {
       title: 'ShotDrop',
       debugShowCheckedModeBanner: false,
       theme: appThemeData(),
+      // The switch to light or dark has its own reveal (ThemeFlip), so no cross-fade.
+      themeAnimationDuration: Duration.zero,
+      builder: (context, child) => ThemeFlip(child: child ?? const SizedBox.shrink()),
       // The Instagram setup comes first, on the first launch only; after that the card's photos.
       home: social.setupSeen ? const HomeShell() : const SetupScreen(firstRun: true),
     ),

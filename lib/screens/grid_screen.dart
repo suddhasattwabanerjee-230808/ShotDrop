@@ -6,6 +6,7 @@ import '../models.dart';
 import '../prefetch.dart';
 import '../stores.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'date_filter_sheet.dart';
 import 'editor_screen.dart';
@@ -173,7 +174,7 @@ class _GridScreenState extends State<GridScreen> {
                         if (!phone && rawCount > 0) '· $rawCount With RAW',
                         if (phone && scope.phone.partial) '· Only The Ones You Allowed',
                       ].join(' '),
-                      style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -197,6 +198,7 @@ class _GridScreenState extends State<GridScreen> {
                     onPressed: _source.refresh,
                     icon: const Icon(Icons.refresh_rounded),
                   ),
+                  const ThemeToggle(),
                 ],
                 bottom: GalleryToggle(current: widget.gallery),
               ),
@@ -386,7 +388,7 @@ class _DayHeader extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           '${day.length}',
-          style: const TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w700),
+          style: TextStyle(fontSize: 13, color: muted, fontWeight: FontWeight.w700),
         ),
         const Spacer(),
         if (selecting)
@@ -439,13 +441,13 @@ class _Tile extends StatelessWidget {
             child: shot.hasRaw ? PhotoBadge(label: shot.editable ? 'RAW' : 'RAW ONLY') : const SizedBox.shrink(),
           ),
           if (queued)
-            const Positioned(
+            Positioned(
               left: 6,
               bottom: 6,
-              child: PhotoBadge(label: 'READY', icon: Icons.check_rounded, color: positive, fg: Color(0xFF06210F)),
+              child: PhotoBadge(label: 'READY', icon: Icons.check_rounded, color: positive, fg: const Color(0xFF06210F)),
             )
           else if (kept)
-            const Positioned(
+            Positioned(
               left: 6,
               bottom: 6,
               child: PhotoBadge(label: 'SELECTED', icon: Icons.favorite_rounded, color: accent, fg: onAccent),

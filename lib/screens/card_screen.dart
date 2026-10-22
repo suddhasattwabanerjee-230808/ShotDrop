@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../stores.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'grid_screen.dart';
 
@@ -44,6 +45,7 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
         return Scaffold(
           appBar: AppBar(
             title: const Text('SD Card Gallery'),
+            actions: const [ThemeToggle()],
             bottom: const GalleryToggle(current: Gallery.card),
           ),
           body: AnimatedSwitcher(
@@ -60,9 +62,9 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
       // No card in (unplugged, or never picked): the same first page either way.
       case CardState.noFolder:
       case CardState.waiting:
-        return StatePanel(
+        return const StatePanel(
           icon: Icons.sd_card_outlined,
-          iconWidget: const _PulsingIcon(icon: Icons.sd_card_outlined),
+          iconWidget: _PulsingIcon(icon: Icons.sd_card_outlined),
           title: 'Plug In Your Camera Card',
           body:
               'Put the D5600\'s SD card in a card reader and connect it to the phone with the OTG adapter. '

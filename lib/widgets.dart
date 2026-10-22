@@ -158,7 +158,7 @@ class _CardImageState extends State<CardImage> {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: path == null
-          ? const ColoredBox(key: ValueKey('empty'), color: surface, child: SizedBox.expand())
+          ? ColoredBox(key: const ValueKey('empty'), color: surface, child: const SizedBox.expand())
           : Image.file(
               File(path),
               key: ValueKey(path),
@@ -169,7 +169,7 @@ class _CardImageState extends State<CardImage> {
               filterQuality: FilterQuality.medium,
               errorBuilder: (_, _, _) {
                 _retry();
-                return const ColoredBox(color: surface, child: SizedBox.expand());
+                return ColoredBox(color: surface, child: const SizedBox.expand());
               },
             ),
     );
@@ -178,7 +178,14 @@ class _CardImageState extends State<CardImage> {
 
 /// A small rounded label laid over a photo ("RAW", "In Upload").
 class PhotoBadge extends StatelessWidget {
-  const PhotoBadge({super.key, required this.label, this.icon, this.color = const Color(0xB3000000), this.fg = ink});
+  // Over a photo, so light text in either mode.
+  const PhotoBadge({
+    super.key,
+    required this.label,
+    this.icon,
+    this.color = const Color(0xB3000000),
+    this.fg = const Color(0xFFF2F2F5),
+  });
 
   final String label;
   final IconData? icon;
@@ -245,7 +252,7 @@ class StatePanel extends StatelessWidget {
           Text(
             body,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 15, color: muted, height: 1.45),
+            style: TextStyle(fontSize: 15, color: muted, height: 1.45),
           ),
           if (actions.isNotEmpty) const SizedBox(height: 28),
           for (final a in actions)
@@ -389,7 +396,7 @@ class InstagramFacebookLogo extends StatelessWidget {
           bottom: 0,
           child: Container(
             padding: EdgeInsets.all(size * 0.06),
-            decoration: const BoxDecoration(color: surface, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: surface, shape: BoxShape.circle),
             child: FacebookLogo(size: size * 0.55),
           ),
         ),

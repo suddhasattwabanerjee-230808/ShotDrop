@@ -14,6 +14,7 @@ import '../share_channel.dart';
 import '../storage.dart';
 import '../stores.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'app_screens.dart';
 import 'setup_screen.dart';
@@ -130,7 +131,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 listenable: social,
                 builder: (context, _) => Text(
                   social.handle.isEmpty ? 'To Instagram · Set Your Username' : 'To Instagram As @${social.handle}',
-                  style: const TextStyle(color: accent, fontWeight: FontWeight.w700),
+                  style: TextStyle(color: accent, fontWeight: FontWeight.w700),
                 ),
               ),
             ),
@@ -148,7 +149,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                 widget.items.length > 1
                     ? 'Posts go from 4:5 (tall) to 1.91:1 (wide), and a carousel takes its first photo\'s shape.'
                     : 'Posts go from 4:5 (tall) to 1.91:1 (wide).',
-                style: const TextStyle(fontSize: 12, color: muted, height: 1.4),
+                style: TextStyle(fontSize: 12, color: muted, height: 1.4),
               ),
               const SizedBox(height: 8),
               SegmentedButton<PostFit>(
@@ -171,7 +172,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                       : social.instagramSharesToFacebook
                       ? 'Not needed: Instagram already shares your posts to Facebook.'
                       : 'Only needed if Instagram doesn\'t share to Facebook by itself.',
-                  style: const TextStyle(fontSize: 12, color: muted),
+                  style: TextStyle(fontSize: 12, color: muted),
                 ),
               ),
             _Note(
@@ -236,7 +237,7 @@ class _ModeCard extends StatelessWidget {
         duration: const Duration(milliseconds: 160),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? const Color(0x1FFFD21F) : surfaceHigh,
+          color: selected ? accent.withValues(alpha: 0.12) : surfaceHigh,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: selected ? accent : Colors.transparent, width: 1.5),
         ),
@@ -251,7 +252,7 @@ class _ModeCard extends StatelessWidget {
                   Text(mode.label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                   Text(
                     detail,
-                    style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -259,7 +260,7 @@ class _ModeCard extends StatelessWidget {
             AnimatedOpacity(
               opacity: selected ? 1 : 0,
               duration: const Duration(milliseconds: 160),
-              child: const Icon(Icons.check_circle_rounded, color: accent),
+              child: Icon(Icons.check_circle_rounded, color: accent),
             ),
           ],
         ),
@@ -282,7 +283,7 @@ class _Note extends StatelessWidget {
         Icon(icon, size: 16, color: muted),
         const SizedBox(width: 8),
         Expanded(
-          child: Text(text, style: const TextStyle(fontSize: 12, color: muted, height: 1.4)),
+          child: Text(text, style: TextStyle(fontSize: 12, color: muted, height: 1.4)),
         ),
       ],
     ),
@@ -496,10 +497,11 @@ class _PublishScreenState extends State<PublishScreen> {
               if (social.handle.isNotEmpty)
                 Text(
                   '@${social.handle}',
-                  style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                 ),
             ],
           ),
+          actions: const [ThemeToggle()],
         ),
         body: _ended != null
             ? _summary(_ended!)
@@ -572,14 +574,14 @@ class _PublishScreenState extends State<PublishScreen> {
                         'Tap Yes once ${story ? 'the story is up' : 'you\'ve tapped ${step.kind == StepKind.facebookPost ? 'Post' : 'Share'}'} '
                         'in $appName, or Do It Later to keep ${step.items.length == 1 ? 'it' : 'them'} in the Upload folder.',
                         textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 13, color: muted, height: 1.45),
+                        style: TextStyle(fontSize: 13, color: muted, height: 1.45),
                       ),
                       if (next != null) ...[
                         const SizedBox(height: 14),
                         Text(
                           'Next Up: ${next.title}',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w800),
+                          style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w800),
                         ),
                       ],
                     ],
@@ -655,7 +657,7 @@ class _Thumbs extends StatelessWidget {
             File(items.single.previewPath),
             fit: BoxFit.contain,
             cacheWidth: 720,
-            errorBuilder: (_, _, _) => const SizedBox(width: 200, height: 250, child: ColoredBox(color: surfaceHigh)),
+            errorBuilder: (_, _, _) => SizedBox(width: 200, height: 250, child: ColoredBox(color: surfaceHigh)),
           ),
         ),
       );
@@ -682,7 +684,7 @@ class _Thumbs extends StatelessWidget {
                         File(item.previewPath),
                         fit: BoxFit.cover,
                         cacheWidth: 200,
-                        errorBuilder: (_, _, _) => const ColoredBox(color: surfaceHigh),
+                        errorBuilder: (_, _, _) => ColoredBox(color: surfaceHigh),
                       ),
                       if (i == shown.length - 1 && items.length > shown.length)
                         ColoredBox(
@@ -690,7 +692,7 @@ class _Thumbs extends StatelessWidget {
                           child: Center(
                             child: Text(
                               '+${items.length - shown.length}',
-                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.white),
                             ),
                           ),
                         ),
@@ -718,7 +720,7 @@ class _DoneBadge extends StatelessWidget {
       child: Container(
         width: 96,
         height: 96,
-        decoration: const BoxDecoration(color: positive, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: positive, shape: BoxShape.circle),
         child: const Icon(Icons.check_rounded, size: 52, color: Color(0xFF06210F)),
       ),
     ),

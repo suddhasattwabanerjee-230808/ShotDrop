@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../theme.dart';
+import '../theme_switch.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
 import 'home_shell.dart';
@@ -123,10 +124,11 @@ class _SelectedScreenState extends State<SelectedScreen> {
                               ? 'Your Shortlist'
                               : '${items.length} ${items.length == 1 ? 'Photo' : 'Photos'}'
                                     '${edited > 0 ? ' · $edited Edited' : ''}',
-                          style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
+                    actions: const [ThemeToggle()],
                   ),
             body: CustomScrollView(
               slivers: [
@@ -140,7 +142,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
                           const SizedBox(width: 10),
                           Text(
                             'Copying ${uploads.copying} From The Card…',
-                            style: const TextStyle(color: muted, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: muted, fontWeight: FontWeight.w700),
                           ),
                         ],
                       ),
@@ -236,7 +238,7 @@ class _Tile extends StatelessWidget {
               fit: BoxFit.cover,
               cacheWidth: 360,
               gaplessPlayback: true,
-              errorBuilder: (_, _, _) => const ColoredBox(color: surfaceHigh),
+              errorBuilder: (_, _, _) => ColoredBox(color: surfaceHigh),
             ),
           ),
         ),
