@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 enum InstallOutcome { started, needsPermission }
@@ -29,4 +30,24 @@ class AppChannel {
 
   /// App info, where Android hides "Allow restricted settings" for apps not from the Play Store.
   Future<void> openAppInfo() => _m.invokeMethod('openAppInfo');
+
+  /// Every saved setting, as Android has it.
+  Future<Map<String, Object?>> prefs() async =>
+      (await _m.invokeMapMethod<String, Object?>('prefs')) ?? <String, Object?>{};
+
+  /// Saves one setting ([value] null removes it).
+  Future<void> setPref(String key, Object? value) => _m.invokeMethod('setPref', {'key': key, 'value': value});
+
+  /// Notes an error in Download (ShotDrop-crash-…-dart.txt).
+  Future<void> logError(String text) => _m.invokeMethod('logError', {'text': text});
+}
+
+final _reported = <String>{};
+
+/// Notes [error] once per run (a repeating error doesn't fill Download).
+void reportError(Object error, StackTrace? stack) {
+  final text = 'Dart error: $error\n\n$stack';
+  debugPrint(text);
+  if (!_reported.add('$error')) return;
+  AppChannel.instance.logError(text).catchError((Object _) {});
 }

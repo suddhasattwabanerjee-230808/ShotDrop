@@ -1,6 +1,7 @@
 package com.bittu.shotdrop
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -12,11 +13,16 @@ import java.io.File
 
 /**
  * The app itself: its version and installing an update (the APK is
- * downloaded on the Flutter side), and the caption helper's switch in
- * Accessibility settings.
+ * downloaded on the Flutter side), the caption helper's switch in
+ * Accessibility settings, the saved settings, and noting Dart errors.
  */
 class AppChannel(private val activity: Activity, messenger: BinaryMessenger) : MethodChannel.MethodCallHandler {
     private val channel = MethodChannel(messenger, "shotdrop/app")
+
+    // Settings live in Android's own SharedPreferences, read and written here.
+    // (The shared_preferences plugin didn't work in release builds: nothing
+    // was saved, and 0.5.2 waited on it forever at a black screen.)
+    private val prefs by lazy { activity.getSharedPreferences("shotdrop.settings", Context.MODE_PRIVATE) }
 
     init {
         channel.setMethodCallHandler(this)
@@ -27,6 +33,25 @@ class AppChannel(private val activity: Activity, messenger: BinaryMessenger) : M
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
+                "prefs" -> result.success(HashMap<String, Any?>(prefs.all))
+                "setPref" -> {
+                    val key = call.argument<String>("key")!!
+                    val edit = prefs.edit()
+                    when (val v = call.argument<Any?>("value")) {
+                        null -> edit.remove(key)
+                        is Boolean -> edit.putBoolean(key, v)
+                        is Int -> edit.putInt(key, v)
+                        is Long -> edit.putInt(key, v.toInt())
+                        else -> edit.putString(key, v.toString())
+                    }
+                    edit.apply()
+                    result.success(null)
+                }
+                // A Dart error (the app keeps going): noted in Download like a crash.
+                "logError" -> {
+                    CrashLog.write(activity, call.argument<String>("text") ?: "", suffix = "-dart.txt")
+                    result.success(null)
+                }
                 "version" -> {
                     val info = activity.packageManager.getPackageInfo(activity.packageName, 0)
                     result.success(mapOf("name" to info.versionName, "code" to info.longVersionCode))

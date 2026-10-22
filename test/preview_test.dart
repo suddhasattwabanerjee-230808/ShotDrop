@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shotdrop/main.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/screens/editor_screen.dart';
@@ -98,7 +97,6 @@ void main() {
   late List<CardFile> files;
 
   setUpAll(() async {
-    SharedPreferences.setMockInitialValues({'shotdrop.card_folder.v1': 'content://tree/DCIM'});
     tmp = Directory.systemTemp.createTempSync('shotdrop_preview');
     files = [];
     final base = DateTime(2026, 10, 21, 18, 40).millisecondsSinceEpoch;
@@ -203,6 +201,17 @@ void main() {
           'maskWidth': args['width'],
           'maskHeight': args['height'],
         };
+      },
+    );
+    // Saved settings: the card folder was picked before.
+    final prefs = <String, Object?>{'shotdrop.card_folder.v1': 'content://tree/DCIM'};
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('shotdrop/app'),
+      (call) async => switch (call.method) {
+        'prefs' => prefs,
+        'setPref' => prefs[(call.arguments as Map)['key'] as String] = (call.arguments as Map)['value'],
+        'version' => {'name': '0.5.3', 'code': 9},
+        _ => null,
       },
     );
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(

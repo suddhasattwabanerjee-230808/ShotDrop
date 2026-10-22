@@ -4,17 +4,46 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_channel.dart';
 import 'card_channel.dart';
 import 'models.dart';
 import 'share_channel.dart';
 
-/// The app's saved settings: Android's plain SharedPreferences file. (Not
-/// SharedPreferencesAsync: its DataStore didn't survive R8 in release builds,
-/// and every setting, from the Instagram username to the card folder, was
-/// lost on restart.)
-Future<SharedPreferences> prefs() => SharedPreferences.getInstance();
+/// The app's saved settings, kept by Android (AppChannel, its own
+/// SharedPreferences file). Not the shared_preferences plugin: in release
+/// builds it saved nothing, and 0.5.2 waited on it forever at a black
+/// screen. Read once; a failed read gives empty settings, never a hang.
+class Prefs {
+  Prefs._(this._values);
+  final Map<String, Object?> _values;
+
+  static Future<Prefs>? _loaded;
+  static Future<Prefs> load() => _loaded ??= AppChannel.instance
+      .prefs()
+      .timeout(const Duration(seconds: 3))
+      .then(Prefs._, onError: (Object e, StackTrace st) {
+        reportError('Couldn\'t read the settings: $e', st);
+        return Prefs._({});
+      });
+
+  String? getString(String key) => _values[key] as String?;
+  bool? getBool(String key) => _values[key] as bool?;
+  int? getInt(String key) => (_values[key] as num?)?.toInt();
+
+  Future<void> setString(String key, String value) => _set(key, value);
+  Future<void> setBool(String key, bool value) => _set(key, value);
+  Future<void> setInt(String key, int value) => _set(key, value);
+
+  Future<void> _set(String key, Object value) async {
+    _values[key] = value;
+    await AppChannel.instance.setPref(key, value).catchError((Object e, StackTrace st) {
+      reportError('Couldn\'t save "$key": $e', st);
+    });
+  }
+}
+
+Future<Prefs> prefs() => Prefs.load();
 
 enum CardState { noFolder, waiting, newCard, loading, ready, error }
 
