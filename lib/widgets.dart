@@ -75,6 +75,18 @@ class CardImage extends StatefulWidget {
 
 class _CardImageState extends State<CardImage> {
   String? _fast, _sharp;
+  bool _retried = false;
+
+  // The file went (thumbnails are cleared when ShotDrop goes to the background): make it again, once.
+  void _retry() {
+    if (_retried) return;
+    _retried = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _fast = _sharp = null);
+      _load();
+    });
+  }
 
   @override
   void initState() {
@@ -87,6 +99,7 @@ class _CardImageState extends State<CardImage> {
     super.didUpdateWidget(old);
     if (old.file.docId != widget.file.docId || old.maxEdge != widget.maxEdge) {
       _fast = _sharp = null;
+      _retried = false;
       _load();
     }
   }
@@ -116,7 +129,10 @@ class _CardImageState extends State<CardImage> {
               height: double.infinity,
               gaplessPlayback: true,
               filterQuality: FilterQuality.medium,
-              errorBuilder: (_, _, _) => const ColoredBox(color: surface, child: SizedBox.expand()),
+              errorBuilder: (_, _, _) {
+                _retry();
+                return const ColoredBox(color: surface, child: SizedBox.expand());
+              },
             ),
     );
   }
@@ -268,4 +284,78 @@ class _InstagramLogoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_InstagramLogoPainter old) => false;
+}
+
+/// Facebook's mark: a white "f" on its blue circle, its stem running off the bottom.
+class FacebookLogo extends StatelessWidget {
+  const FacebookLogo({super.key, this.size = 28});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: const _FacebookLogoPainter());
+}
+
+class _FacebookLogoPainter extends CustomPainter {
+  const _FacebookLogoPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final k = size.width / 100;
+    final circle = Path()..addOval(Offset.zero & size);
+    canvas.drawPath(circle, Paint()..color = const Color(0xFF1877F2));
+    // The "f", drawn on a 100 x 100 grid.
+    final f = Path()
+      ..moveTo(42, 100)
+      ..lineTo(42, 63)
+      ..lineTo(31, 63)
+      ..lineTo(31, 50)
+      ..lineTo(42, 50)
+      ..lineTo(42, 40)
+      ..cubicTo(42, 28, 50, 21, 62, 21)
+      ..lineTo(70, 21)
+      ..lineTo(70, 33)
+      ..lineTo(63, 33)
+      ..cubicTo(58, 33, 57, 36, 57, 40)
+      ..lineTo(57, 50)
+      ..lineTo(69, 50)
+      ..lineTo(67, 63)
+      ..lineTo(57, 63)
+      ..lineTo(57, 100)
+      ..close();
+    canvas.save();
+    canvas.clipPath(circle);
+    canvas.scale(k);
+    canvas.drawPath(f, Paint()..color = Colors.white);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_FacebookLogoPainter old) => false;
+}
+
+/// Instagram's logo with Facebook's tucked into its corner: a post that goes
+/// to both.
+class InstagramFacebookLogo extends StatelessWidget {
+  const InstagramFacebookLogo({super.key, this.size = 30});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: size * 1.3,
+    height: size * 1.3,
+    child: Stack(
+      children: [
+        InstagramLogo(size: size),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: EdgeInsets.all(size * 0.06),
+            decoration: const BoxDecoration(color: surface, shape: BoxShape.circle),
+            child: FacebookLogo(size: size * 0.55),
+          ),
+        ),
+      ],
+    ),
+  );
 }

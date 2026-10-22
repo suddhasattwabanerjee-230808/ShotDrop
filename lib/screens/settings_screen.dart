@@ -106,10 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   Future<void> _clearCache() async {
     final messenger = ScaffoldMessenger.of(context);
-    final dir = await getTemporaryDirectory();
-    for (final name in ['thumbs', 'updates']) {
-      await Directory('${dir.path}/$name').delete(recursive: true).catchError((Object _) => dir);
-    }
+    await clearCacheFiles(keep: AppScope.of(context).updater.installing);
     ThumbCache.clear();
     await _refresh();
     messenger.showSnackBar(const SnackBar(content: Text('Thumbnails cleared. They\'re made again as you scroll.')));

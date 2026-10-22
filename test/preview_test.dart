@@ -293,6 +293,12 @@ void main() {
     await tester.tap(find.text('Allow Access'));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
     await shot(tester, '2e_phone_gallery');
+    await tester.tap(find.byIcon(Icons.calendar_month_rounded).last);
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '2f_date_sheet');
+    await tester.tap(find.text('Last 7 Days'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '2g_phone_last_week');
     await tester.tap(bar(Icons.sd_card_outlined));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -313,6 +319,15 @@ void main() {
     await g.up();
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '4c_crop_moved');
+    // A corner pulled in: when it's let go, the frame stays there and only the crop shows.
+    final corner = await tester.startGesture(const Offset(30, 184)); // the frame's top-left corner
+    await corner.moveBy(const Offset(40, 50));
+    await corner.moveBy(const Offset(40, 50));
+    await tester.pump();
+    await shot(tester, '4d_crop_corner_moving');
+    await corner.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '4e_crop_corner_done');
 
     await tester.tap(find.text('Body'));
     await shot(tester, '5_editor_body');

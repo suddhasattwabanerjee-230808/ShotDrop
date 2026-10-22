@@ -758,79 +758,65 @@ class _CropStage extends StatefulWidget {
   State<_CropStage> createState() => _CropStageState();
 }
 
-typedef _Layout = ({Rect photo, Rect frame});
-
-/// Cropping as in Instagram or Google Photos: the frame sits still in the
-/// middle, as big as it fits, and the photo moves under it: drag to move it,
-/// pinch to zoom. Dragging a corner changes the frame itself (its shape,
-/// unless a ratio is picked); let go and it grows back to fill the screen.
-/// Nothing is ever squeezed: what's outside the frame is simply cut off.
-class _CropStageState extends State<_CropStage> with SingleTickerProviderStateMixin {
-  late final _settle = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
-  _Layout? _shown; // what was drawn last
-  _Layout? _settleFrom; // where the settle animation starts
-  _Layout? _start; // at the start of a gesture
-  Rect? _startCrop;
+/// Cropping: the frame sits over the photo; drag a corner to change it, or
+/// drag and pinch the photo to move and zoom it under the frame. Nothing
+/// jumps when a finger lifts: the frame stays where it was left, and only the
+/// cropped part shows, so what's been cut is plain to see and its corners are
+/// right there to change it again. The view starts afresh (the whole photo,
+/// as big as fits) when the crop changes any other way: a ratio, a turn, undo.
+class _CropStageState extends State<_CropStage> {
+  Rect? _photo; // the whole photo on screen; null: as big as fits
+  Size? _box;
+  Rect? _ownCrop; // the crop as this stage last set it
+  Rect? _startPhoto, _startFrame, _startCrop; // at the start of a gesture
   int? _corner; // dragging this corner of the frame (null: moving the photo)
   Offset _focal0 = Offset.zero, _total = Offset.zero;
   bool _active = false;
 
   @override
-  void dispose() {
-    _settle.dispose();
-    super.dispose();
-  }
-
-  @override
   void didUpdateWidget(_CropStage old) {
     super.didUpdateWidget(old);
-    // The crop jumped (a ratio, a turn, undo, a corner let go): glide there from what's shown.
-    if (!_active && old.params.crop != widget.params.crop && _shown != null) {
-      _settleFrom = _shown;
-      _settle.forward(from: 0);
+    final p = widget.params, o = old.params;
+    // Changed from outside (a ratio, a turn, undo): show the whole photo again.
+    if (p.crop != _ownCrop || p.quarterTurns != o.quarterTurns || p.straighten != o.straighten || p.flipH != o.flipH) {
+      if (!_active) _photo = null;
     }
   }
 
   Size get _o => orientedSize(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), widget.params);
 
-  static Rect _lerp(Rect a, Rect b, double t) => Rect.lerp(a, b, t)!;
+  Rect _photoIn(Size box) {
+    if (box != _box) {
+      _box = box;
+      _photo = null;
+    }
+    return _photo ??= fitRect(_o, box, pad: 28, top: 56);
+  }
 
-  _Layout _layoutFor(Size box) {
-    final target = cropLayout(_o, widget.params.crop, box);
-    final start = _start;
-    if (_corner != null && start != null) {
-      // The photo holds still while a corner is dragged; the frame follows the finger.
-      final c = widget.params.crop, p = start.photo;
-      return (
-        photo: p,
-        frame: Rect.fromLTRB(
-          p.left + c.left * p.width,
-          p.top + c.top * p.height,
-          p.left + c.right * p.width,
-          p.top + c.bottom * p.height,
-        ),
-      );
-    }
-    final from = _settleFrom;
-    if (from != null && _settle.isAnimating) {
-      final t = Curves.easeOutCubic.transform(_settle.value);
-      return (photo: _lerp(from.photo, target.photo, t), frame: _lerp(from.frame, target.frame, t));
-    }
-    return target;
+  static Rect _frameOn(Rect photo, Rect c) => Rect.fromLTRB(
+    photo.left + c.left * photo.width,
+    photo.top + c.top * photo.height,
+    photo.left + c.right * photo.width,
+    photo.top + c.bottom * photo.height,
+  );
+
+  void _live(Rect crop) {
+    _ownCrop = crop;
+    widget.onLive(widget.params.copyWith(crop: crop));
   }
 
   void _onStart(ScaleStartDetails d, Size box) {
-    final shown = _shown ?? cropLayout(_o, widget.params.crop, box);
-    _settle.stop();
-    _start = shown;
+    final photo = _photoIn(box);
+    final frame = _frameOn(photo, widget.params.crop);
+    _startPhoto = photo;
+    _startFrame = frame;
     _startCrop = widget.params.crop;
     _focal0 = d.localFocalPoint;
     _total = Offset.zero;
     _corner = null;
     if (d.pointerCount == 1) {
-      final f = shown.frame;
       var best = 44.0;
-      for (final (i, c) in [f.topLeft, f.topRight, f.bottomRight, f.bottomLeft].indexed) {
+      for (final (i, c) in [frame.topLeft, frame.topRight, frame.bottomRight, frame.bottomLeft].indexed) {
         final dist = (c - d.localFocalPoint).distance;
         if (dist < best) {
           best = dist;
@@ -842,43 +828,34 @@ class _CropStageState extends State<_CropStage> with SingleTickerProviderStateMi
   }
 
   void _onUpdate(ScaleUpdateDetails d, Size box) {
-    final start = _start, crop0 = _startCrop;
-    if (start == null || crop0 == null) return;
-    final p = widget.params;
+    final photo0 = _startPhoto, frame0 = _startFrame, crop0 = _startCrop;
+    if (photo0 == null || frame0 == null || crop0 == null) return;
     final corner = _corner;
     if (corner == null) {
-      widget.onLive(
-        p.copyWith(
-          crop: panZoomCrop(
-            photo: start.photo,
-            frame: start.frame,
-            focal0: _focal0,
-            focal: d.localFocalPoint,
-            scale: d.scale,
-          ),
-        ),
-      );
+      // The photo moves and zooms under the frame, which stays put.
+      final crop = panZoomCrop(photo: photo0, frame: frame0, focal0: _focal0, focal: d.localFocalPoint, scale: d.scale);
+      final pw = frame0.width / crop.width, ph = frame0.height / crop.height;
+      _photo = Rect.fromLTWH(frame0.left - crop.left * pw, frame0.top - crop.top * ph, pw, ph);
+      _live(crop);
       return;
     }
-    // A corner: keep the finger on the screen, then move it in photo terms.
-    final f0 = [start.frame.topLeft, start.frame.topRight, start.frame.bottomRight, start.frame.bottomLeft][corner];
+    // A corner: the photo holds still and the frame follows the finger (kept on screen).
+    final f0 = [frame0.topLeft, frame0.topRight, frame0.bottomRight, frame0.bottomLeft][corner];
     final room = Rect.fromLTRB(8, 8, box.width - 8, box.height - 8);
     _total += d.focalPointDelta;
     final at = Offset(
       (f0.dx + _total.dx).clamp(room.left, room.right),
       (f0.dy + _total.dy).clamp(room.top, room.bottom),
     );
-    final delta = Offset((at.dx - f0.dx) / start.photo.width, (at.dy - f0.dy) / start.photo.height);
-    widget.onLive(p.copyWith(crop: resizeCrop(crop0, corner, delta, normalizedRatio(_o, _ratio(p, _o)))));
+    final delta = Offset((at.dx - f0.dx) / photo0.width, (at.dy - f0.dy) / photo0.height);
+    final p = widget.params;
+    _live(resizeCrop(crop0, corner, delta, normalizedRatio(_o, _ratio(p, _o))));
   }
 
   void _onEnd() {
-    _settleFrom = _shown;
-    _start = null;
-    _startCrop = null;
+    _startPhoto = _startFrame = _startCrop = null;
     _corner = null;
     setState(() => _active = false);
-    _settle.forward(from: 0);
     widget.onCommit();
   }
 
@@ -886,32 +863,27 @@ class _CropStageState extends State<_CropStage> with SingleTickerProviderStateMi
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, box) {
       final size = box.biggest;
+      final photo = _photoIn(size);
       return GestureDetector(
         onScaleStart: (d) => _onStart(d, size),
         onScaleUpdate: (d) => _onUpdate(d, size),
         onScaleEnd: (_) => _onEnd(),
-        child: AnimatedBuilder(
-          animation: _settle,
-          builder: (context, _) {
-            final layout = _shown = _layoutFor(size);
-            return TweenAnimationBuilder<double>(
-              // At rest only the cropped photo shows; while moving, a glimpse of what could come in.
-              tween: Tween(end: _active ? 0.8 : 1.0),
-              duration: const Duration(milliseconds: 220),
-              builder: (context, dim, _) => CustomPaint(
-                painter: _CropPainter(
-                  widget.image,
-                  widget.params,
-                  layout.photo,
-                  layout.frame,
-                  dim,
-                  finished: _active || _settle.isAnimating ? null : widget.finished,
-                  guides: _active,
-                ),
-                size: Size.infinite,
-              ),
-            );
-          },
+        child: TweenAnimationBuilder<double>(
+          // At rest only the cropped part shows; while moving, a glimpse of the rest.
+          tween: Tween(end: _active ? 0.75 : 1.0),
+          duration: const Duration(milliseconds: 220),
+          builder: (context, dim, _) => CustomPaint(
+            painter: _CropPainter(
+              widget.image,
+              widget.params,
+              photo,
+              _frameOn(photo, widget.params.crop),
+              dim,
+              finished: _active ? null : widget.finished,
+              guides: _active,
+            ),
+            size: Size.infinite,
+          ),
         ),
       );
     },

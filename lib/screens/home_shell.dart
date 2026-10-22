@@ -75,9 +75,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   // Back from Instagram with a round of publishing out: "Did It Post?"
+  // Leaving ShotDrop (closed, or just the home screen): thumbnails and downloads go.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) PublishScreen.showIfPending(context);
+    if (state == AppLifecycleState.paused) {
+      ThumbCache.clear();
+      clearCacheFiles(keep: _updater.installing).ignore();
+    }
   }
 
   /// Opened by a card being plugged in: show its photos.

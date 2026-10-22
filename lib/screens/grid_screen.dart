@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../date_filter.dart';
 import '../models.dart';
 import '../stores.dart';
 import '../theme.dart';
@@ -25,6 +26,53 @@ class GridScreen extends StatefulWidget {
 
 class _GridScreenState extends State<GridScreen> {
   final _selected = <String>{}; // CardShot.id
+  var _dates = DateFilter.all;
+
+  /// The date filter's choices; Pick Dates… opens the calendar.
+  Future<void> _pickDates(List<CardShot> all) async {
+    final picked = await showModalBottomSheet<DatePreset>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text('Show Photos From', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+            ),
+            for (final p in DatePreset.values)
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                leading: Icon(p == DatePreset.custom ? Icons.date_range_rounded : Icons.event_rounded),
+                title: Text(
+                  p == DatePreset.custom && _dates.preset == DatePreset.custom ? _dates.label : p.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                trailing: _dates.preset == p ? const Icon(Icons.check_rounded, color: accent) : null,
+                onTap: () => Navigator.pop(context, p),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    if (picked != DatePreset.custom) return setState(() => _dates = DateFilter.preset(picked));
+    final now = DateTime.now();
+    final oldest = all.isEmpty ? now : all.last.taken;
+    final newest = all.isEmpty ? now : all.first.taken;
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(oldest.year, oldest.month, oldest.day),
+      lastDate: newest.isAfter(now) ? newest : now,
+      initialDateRange: _dates.preset == DatePreset.custom ? DateTimeRange(start: _dates.first!, end: _dates.last!) : null,
+      helpText: 'Show Photos From',
+      saveText: 'Show',
+    );
+    if (range != null && mounted) setState(() => _dates = DateFilter.range(range.start, range.end));
+  }
 
   bool get _selecting => _selected.isNotEmpty;
 
@@ -119,7 +167,8 @@ class _GridScreenState extends State<GridScreen> {
   Widget _build(BuildContext context) {
     final scope = AppScope.of(context);
     final phone = widget.gallery == Gallery.phone;
-    final shots = _source.shots;
+    final all = _source.shots;
+    final shots = _dates.isAll ? all : [for (final s in all) if (_dates.contains(s.taken)) s];
     _selected.retainAll({for (final s in shots) s.id});
     final days = <List<CardShot>>[];
     for (final s in shots) {
@@ -147,14 +196,29 @@ class _GridScreenState extends State<GridScreen> {
                   children: [
                     Text(phone ? 'Phone Gallery' : 'SD Card Gallery'),
                     Text(
-                      phone
-                          ? '${shots.length} ${shots.length == 1 ? 'photo' : 'photos'}${scope.phone.partial ? ' · only the ones you allowed' : ''}'
-                          : '${shots.length} shots${rawCount > 0 ? ' · $rawCount with RAW' : ''}',
+                      [
+                        _dates.isAll ? '${shots.length}' : '${shots.length} of ${all.length}',
+                        phone ? (all.length == 1 ? 'photo' : 'photos') : 'shots',
+                        if (!phone && rawCount > 0) '· $rawCount with RAW',
+                        if (phone && scope.phone.partial) '· only the ones you allowed',
+                      ].join(' '),
                       style: const TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
                 actions: [
+                  if (_dates.isAll)
+                    IconButton(
+                      tooltip: 'Filter By Date',
+                      onPressed: () => _pickDates(all),
+                      icon: const Icon(Icons.calendar_month_rounded),
+                    )
+                  else
+                    _DateChip(
+                      label: _dates.label,
+                      onTap: () => _pickDates(all),
+                      onClear: () => setState(() => _dates = DateFilter.all),
+                    ),
                   if (phone && scope.phone.partial)
                     TextButton(onPressed: scope.phone.requestAccess, child: const Text('Allow All')),
                   IconButton(
@@ -165,7 +229,17 @@ class _GridScreenState extends State<GridScreen> {
                 ],
                 bottom: GalleryToggle(current: widget.gallery),
               ),
-        body: shots.isEmpty
+        body: shots.isEmpty && !_dates.isAll
+            ? StatePanel(
+                icon: Icons.event_busy_rounded,
+                title: 'No Photos On These Dates',
+                body: '${_dates.label}: nothing ${phone ? 'on the phone' : 'on the card'}.',
+                actions: [
+                  FilledButton(onPressed: () => setState(() => _dates = DateFilter.all), child: const Text('Show All Dates')),
+                  TextButton(onPressed: () => _pickDates(all), child: const Text('Pick Other Dates')),
+                ],
+              )
+            : shots.isEmpty
             ? StatePanel(
                 icon: Icons.photo_library_outlined,
                 title: phone ? 'No Photos On The Phone' : 'No Photos On The Card',
@@ -252,6 +326,43 @@ class _GridScreenState extends State<GridScreen> {
   }
 
   static bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+/// The date filter in use, in the title bar: tap to change it, ✕ to show all dates.
+class _DateChip extends StatelessWidget {
+  const _DateChip({required this.label, required this.onTap, required this.onClear});
+  final String label;
+  final VoidCallback onTap, onClear;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: Material(
+      color: accent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.event_rounded, size: 16, color: onAccent),
+              const SizedBox(width: 6),
+              Text(label, style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800, fontSize: 13)),
+              IconButton(
+                tooltip: 'Show All Dates',
+                visualDensity: VisualDensity.compact,
+                onPressed: onClear,
+                icon: const Icon(Icons.close_rounded, size: 18, color: onAccent),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// SD Card | Phone, under a gallery's title: switches to the other gallery.

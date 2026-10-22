@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.2] - 2026-10-22 (build 12)
+
+A crop you can see, and a date filter.
+
+- **Crop stays where you leave it.** Let go of a corner and the frame stays put, showing just the cropped part at its place in the photo, ready to change again. (It used to zoom the crop up to fill the screen, which looked like the original photo.) Drag or pinch the photo to move it under the frame, as before.
+- **Date filter** in both galleries: Today, Yesterday, Last 7 Days, Last 30 Days, or Pick Dates on a calendar. ✕ on the chip shows all dates again.
+- **Thumbnails and downloads are cleared every time you leave ShotDrop,** even just to the home screen. An update being installed is kept until it's done.
+- **"Did It Post?"** shows the Instagram logo with Facebook's beside each post (and the right one for a story or a Facebook post).
+- "Plug In Your Camera Card" no longer has a Check Again button: the card is found by itself.
+
 ## [0.6.1] - 2026-10-22 (build 11)
 
 A Phone Gallery, a cleaner crop, and a new icon.

@@ -45,6 +45,22 @@ Future<int> tidyStorage(UploadStore uploads, AppSettings settings) async {
   return freed;
 }
 
+/// Deletes every thumbnail and downloaded update (all made again when
+/// needed), but not [keep]: an update the installer has open. Done each time
+/// ShotDrop goes to the background. Returns the bytes freed.
+Future<int> clearCacheFiles({String? keep}) async {
+  final cache = await getTemporaryDirectory();
+  var freed = 0;
+  for (final name in ['thumbs', 'updates']) {
+    final dir = Directory('${cache.path}/$name');
+    if (!await dir.exists()) continue;
+    await for (final e in dir.list(followLinks: false)) {
+      if (e is File && e.path != keep) freed += await UploadStore.deleteFile(e);
+    }
+  }
+  return freed;
+}
+
 /// Deletes thumbnails older than [thumbMaxAge], then the least recently used
 /// until the rest fit in [cap] bytes.
 Future<int> trimThumbs(Directory dir, int cap, {DateTime? now}) async {

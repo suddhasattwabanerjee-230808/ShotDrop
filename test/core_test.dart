@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shotdrop/date_filter.dart';
 import 'package:shotdrop/edit/body.dart';
 import 'package:shotdrop/edit/crop.dart';
 import 'package:shotdrop/edit/filters.dart';
@@ -480,15 +481,6 @@ void main() {
   });
 
   group('crop view', () {
-    test('the frame fills the screen and the photo sits around it', () {
-      const o = Size(3000, 2000), box = Size(400, 800);
-      final l = cropLayout(o, const Rect.fromLTWH(0.25, 0, 0.5, 1), box, pad: 0, top: 0);
-      expect(l.frame.width, closeTo(400, 1e-6));
-      expect(l.frame.height, closeTo(400 * 2000 / 1500, 1e-6));
-      expect(l.photo.width, closeTo(800, 1e-6));
-      expect(l.photo.left, closeTo(-200, 1e-6));
-    });
-
     test('dragging moves the crop the other way; pinching zooms around the fingers', () {
       const photo = Rect.fromLTWH(-200, 0, 800, 400), frame = Rect.fromLTWH(0, 0, 400, 400);
       final moved = panZoomCrop(photo: photo, frame: frame, focal0: Offset.zero, focal: const Offset(100, 0), scale: 1);
@@ -509,6 +501,32 @@ void main() {
       expect(out.height, closeTo(1, 1e-6));
       expect(out.left, closeTo(0.5, 1e-6));
       expect(out.top, 0);
+    });
+  });
+
+  group('date filter', () {
+    final now = DateTime(2026, 10, 22, 9, 30);
+
+    test('presets count back whole days from today', () {
+      bool has(DatePreset p, DateTime t) => DateFilter.preset(p).contains(t, now: now);
+      expect(has(DatePreset.today, DateTime(2026, 10, 22, 0, 1)), isTrue);
+      expect(has(DatePreset.today, DateTime(2026, 10, 21, 23, 59)), isFalse);
+      expect(has(DatePreset.yesterday, DateTime(2026, 10, 21, 18)), isTrue);
+      expect(has(DatePreset.yesterday, DateTime(2026, 10, 22, 1)), isFalse);
+      expect(has(DatePreset.week, DateTime(2026, 10, 16)), isTrue);
+      expect(has(DatePreset.week, DateTime(2026, 10, 15, 23)), isFalse);
+      expect(has(DatePreset.month, DateTime(2026, 9, 23)), isTrue);
+      expect(DateFilter.all.contains(DateTime(1990), now: now), isTrue);
+    });
+
+    test('picked dates include both ends, and read well', () {
+      final f = DateFilter.range(DateTime(2026, 10, 3, 15), DateTime(2026, 10, 9));
+      expect(f.contains(DateTime(2026, 10, 3)), isTrue);
+      expect(f.contains(DateTime(2026, 10, 9, 23, 59)), isTrue);
+      expect(f.contains(DateTime(2026, 10, 10)), isFalse);
+      expect(f.label, '3–9 Oct');
+      expect(DateFilter.range(DateTime(2026, 9, 28), DateTime(2026, 10, 4)).label, '28 Sep – 4 Oct');
+      expect(DateFilter.preset(DatePreset.week).label, 'Last 7 Days');
     });
   });
 

@@ -550,7 +550,11 @@ class _PublishScreenState extends State<PublishScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _KindIcon(kind: step.kind, active: true),
+                          switch (step.kind) {
+                            StepKind.instagramPost => const InstagramFacebookLogo(),
+                            StepKind.instagramStory => const InstagramLogo(size: 30),
+                            StepKind.facebookPost => const FacebookLogo(size: 30),
+                          },
                           const SizedBox(width: 10),
                           Flexible(
                             child: Text(step.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
@@ -632,24 +636,6 @@ class _PublishScreenState extends State<PublishScreen> {
       ],
     );
   }
-}
-
-class _KindIcon extends StatelessWidget {
-  const _KindIcon({required this.kind, required this.active});
-  final StepKind kind;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    width: 36,
-    height: 36,
-    decoration: BoxDecoration(color: active ? accent : surfaceHigh, borderRadius: BorderRadius.circular(11)),
-    child: Icon(switch (kind) {
-      StepKind.instagramPost => Icons.grid_on_rounded,
-      StepKind.instagramStory => Icons.amp_stories_rounded,
-      StepKind.facebookPost => Icons.facebook_rounded,
-    }, size: 19, color: active ? onAccent : muted),
-  );
 }
 
 class _Thumbs extends StatelessWidget {

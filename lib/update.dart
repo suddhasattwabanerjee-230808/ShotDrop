@@ -44,6 +44,7 @@ class Updater extends ChangeNotifier {
   bool checking = false;
   String? error;
   double? progress; // 0..1 while downloading
+  String? installing; // the APK handed to Android's installer (kept while it's open)
 
   bool get available => latest != null;
 
@@ -131,6 +132,7 @@ class Updater extends ChangeNotifier {
         notifyListeners();
       }
     }
+    installing = file.path;
     return AppChannel.instance.install(file.path);
   }
 }

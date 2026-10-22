@@ -67,13 +67,6 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
           body:
               'Put the D5600\'s SD card in a card reader and connect it to the phone with the OTG adapter. '
               'ShotDrop notices it by itself.',
-          actions: [
-            OutlinedButton.icon(
-              onPressed: card.refresh,
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Check Again'),
-            ),
-          ],
         );
       case CardState.newCard:
         return StatePanel(
