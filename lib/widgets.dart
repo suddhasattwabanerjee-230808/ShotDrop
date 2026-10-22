@@ -43,14 +43,44 @@ class AppScope extends InheritedWidget {
 /// Card thumbnails asked for once per session; later requests reuse the answer.
 class ThumbCache {
   static final _paths = <String, Future<String?>>{};
+  static final _made = <String, String>{}; // finished answers
+  static final _gone = <String, String>{}; // answers from before the files were cleared
 
-  /// Forgets every answer (after the files were cleared from storage).
-  static void clear() => _paths.clear();
+  /// Forgets every answer (after the files were cleared from storage). The
+  /// pictures still held in memory keep showing without going back to the card.
+  static void clear() {
+    _gone.addAll(_made);
+    _made.clear();
+    _paths.clear();
+  }
+
+  static String _key(CardFile file, int maxEdge, bool fast) => '${file.docId}|${file.modified}|$maxEdge|$fast';
+
+  /// The thumbnail's path if it's already made (no waiting), else null.
+  static String? ready(CardFile file, {required int maxEdge, bool fast = false}) => _made[_key(file, maxEdge, fast)];
+
+  /// Forgets [file]'s thumbnails: their files went, and memory doesn't hold them either.
+  static void forget(CardFile file, {required int maxEdge}) {
+    for (final key in [_key(file, maxEdge, false), _key(file, 160, true)]) {
+      _paths.remove(key);
+      _made.remove(key);
+      _gone.remove(key);
+    }
+  }
 
   static Future<String?> get(CardFile file, {required int maxEdge, bool fast = false}) {
-    final key = '${file.docId}|${file.modified}|$maxEdge|$fast';
+    final key = _key(file, maxEdge, fast);
     return _paths.putIfAbsent(key, () {
-      final f = CardChannel.instance.thumbnail(file, maxEdge: maxEdge, fast: fast);
+      // Cleared from storage but still decoded in memory: show that, no card read.
+      final old = _gone.remove(key);
+      if (old != null && PaintingBinding.instance.imageCache.containsKey(FileImage(File(old)))) {
+        _made[key] = old;
+        return Future.value(old);
+      }
+      final f = CardChannel.instance.thumbnail(file, maxEdge: maxEdge, fast: fast).then((p) {
+        if (p != null) _made[key] = p;
+        return p;
+      });
       // A failure (card pulled mid-read) shouldn't stick: forget it so the next ask retries.
       return f.catchError((Object _) {
         _paths.remove(key);
@@ -83,6 +113,7 @@ class _CardImageState extends State<CardImage> {
     _retried = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      ThumbCache.forget(widget.file, maxEdge: widget.maxEdge);
       setState(() => _fast = _sharp = null);
       _load();
     });
@@ -106,11 +137,18 @@ class _CardImageState extends State<CardImage> {
 
   void _load() {
     final file = widget.file;
+    // Already made: straight in, no blank frame.
+    _sharp = ThumbCache.ready(file, maxEdge: widget.maxEdge);
+    if (_sharp != null) return;
+    _fast = ThumbCache.ready(file, maxEdge: 160, fast: true);
+    // The camera's preview first, then the sharp one: asked in turn, as the card
+    // reads the newest request first.
     ThumbCache.get(file, maxEdge: 160, fast: true).then((p) {
       if (mounted && file.docId == widget.file.docId && _sharp == null) setState(() => _fast = p);
-    });
-    ThumbCache.get(file, maxEdge: widget.maxEdge).then((p) {
-      if (mounted && file.docId == widget.file.docId) setState(() => _sharp = p);
+      if (!mounted || file.docId != widget.file.docId) return;
+      ThumbCache.get(file, maxEdge: widget.maxEdge).then((p) {
+        if (mounted && file.docId == widget.file.docId) setState(() => _sharp = p);
+      });
     });
   }
 

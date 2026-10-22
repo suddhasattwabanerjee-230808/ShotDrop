@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models.dart';
+import '../prefetch.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
@@ -48,11 +49,23 @@ class _ViewerScreenState extends State<ViewerScreen> {
     super.dispose();
   }
 
-  /// Start reading the neighbours so a swipe lands on a sharp photo.
+  /// Once this photo is sharp, start reading the neighbours so a swipe lands
+  /// on a sharp photo (the card reads the newest request first, so asking
+  /// sooner would hold this one up). A photo looked at for a moment is copied
+  /// off the card too, so Edit opens straight away.
   void _prefetch(int i) {
-    for (final j in [i + 1, i - 1, i + 2]) {
-      if (j >= 0 && j < widget.shots.length) ThumbCache.get(widget.shots[j].primary, maxEdge: _viewerEdge);
-    }
+    final shot = widget.shots[i];
+    ThumbCache.get(shot.primary, maxEdge: _viewerEdge).whenComplete(() {
+      if (!mounted || _index != i) return;
+      for (final j in [i + 1, i - 1, i + 2]) {
+        if (j >= 0 && j < widget.shots.length) ThumbCache.get(widget.shots[j].primary, maxEdge: _viewerEdge);
+      }
+    });
+    Future.delayed(const Duration(milliseconds: 800), () {
+      final jpg = shot.jpg;
+      if (!mounted || _index != i || jpg == null || AppScope.of(context).uploads.byShot(shot.id) != null) return;
+      SourcePrefetch.warm(jpg);
+    });
   }
 
   Future<void> _edit() async {

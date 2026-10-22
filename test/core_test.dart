@@ -528,6 +528,59 @@ void main() {
       expect(DateFilter.range(DateTime(2026, 9, 28), DateTime(2026, 10, 4)).label, '28 Sep – 4 Oct');
       expect(DateFilter.preset(DatePreset.week).label, 'Last 7 Days');
     });
+
+    test('one date is that whole day', () {
+      final f = DateFilter.day(DateTime(2026, 10, 3, 15));
+      expect(f.contains(DateTime(2026, 10, 3)), isTrue);
+      expect(f.contains(DateTime(2026, 10, 3, 23, 59)), isTrue);
+      expect(f.contains(DateTime(2026, 10, 4)), isFalse);
+      expect(f.contains(DateTime(2026, 10, 2, 23, 59)), isFalse);
+      expect(f.label, '3 Oct');
+    });
+
+    test('parts of the day, Night running past midnight', () {
+      bool at(DayTime t, int h, [int m = 0]) => DateFilter.all.at(t).contains(DateTime(2026, 10, 3, h, m), now: now);
+      expect(at(DayTime.morning, 5), isTrue);
+      expect(at(DayTime.morning, 11, 59), isTrue);
+      expect(at(DayTime.morning, 12), isFalse);
+      expect(at(DayTime.afternoon, 12), isTrue);
+      expect(at(DayTime.afternoon, 17), isFalse);
+      expect(at(DayTime.evening, 20, 59), isTrue);
+      expect(at(DayTime.night, 23), isTrue);
+      expect(at(DayTime.night, 2), isTrue);
+      expect(at(DayTime.night, 5), isFalse);
+      expect(at(DayTime.night, 20), isFalse);
+      expect(at(DayTime.any, 3), isTrue);
+    });
+
+    test('a picked time range includes its ends, and can wrap', () {
+      bool at(DateFilter f, int h, [int m = 0]) => f.contains(DateTime(2026, 10, 3, h, m), now: now);
+      final evening = DateFilter.all.at(DayTime.range, from: 18 * 60, to: 21 * 60 + 30);
+      expect(at(evening, 18), isTrue);
+      expect(at(evening, 21, 30), isTrue);
+      expect(at(evening, 21, 31), isFalse);
+      expect(at(evening, 17, 59), isFalse);
+      final late = DateFilter.all.at(DayTime.range, from: 22 * 60, to: 2 * 60);
+      expect(at(late, 23), isTrue);
+      expect(at(late, 1, 30), isTrue);
+      expect(at(late, 3), isFalse);
+      expect(evening.label, '6 PM–9:30 PM');
+    });
+
+    test('days and time of day together', () {
+      final f = DateFilter.day(DateTime(2026, 10, 3)).at(DayTime.morning);
+      expect(f.contains(DateTime(2026, 10, 3, 9)), isTrue);
+      expect(f.contains(DateTime(2026, 10, 3, 14)), isFalse);
+      expect(f.contains(DateTime(2026, 10, 4, 9)), isFalse);
+      expect(f.label, '3 Oct · Morning');
+      expect(f.isAll, isFalse);
+      // Changing the days keeps the time of day.
+      final week = f.onDays(DateFilter.preset(DatePreset.week));
+      expect(week.time, DayTime.morning);
+      expect(week.label, 'Last 7 Days · Morning');
+      expect(DateFilter.all.at(DayTime.night).label, 'Night');
+      expect(DateFilter.all.at(DayTime.any).isAll, isTrue);
+    });
   });
 
   group('storage', () {

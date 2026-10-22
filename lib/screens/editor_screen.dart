@@ -13,6 +13,7 @@ import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../pose_channel.dart';
+import '../prefetch.dart';
 import '../stores.dart';
 import '../widgets.dart';
 import 'body_tools.dart';
@@ -58,6 +59,7 @@ class _EditorScreenState extends State<EditorScreen> {
   String? _error;
   String? _sourcePath;
   ui.Image? _preview; // the source, at most _previewEdge px
+  String? _placeholder; // a thumbnail to show while the photo comes off the card
 
   EditParams _p = const EditParams();
   final _history = <EditParams>[];
@@ -105,6 +107,7 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _status = 'Opening…';
       _error = null;
+      _placeholder = null;
       _tool = _Tool.crop;
       _bodyTool = null;
       _slimDraft = null;
@@ -117,8 +120,18 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!await File(path).exists()) {
         final card = target.card;
         if (card == null) throw 'The original isn\'t on the phone any more, and the card isn\'t plugged in.';
-        setState(() => _status = 'Copying From The Card…');
-        await CardChannel.instance.importSource(card, path);
+        // Something to look at meanwhile: the viewer's photo, the gallery tile, or the camera's preview.
+        String? shown(int edge, {bool fast = false}) => ThumbCache.ready(card, maxEdge: edge, fast: fast);
+        setState(() {
+          _status = 'Copying From The Card…';
+          _placeholder = shown(2048) ?? shown(360) ?? shown(160, fast: true);
+        });
+        if (_placeholder == null) {
+          ThumbCache.get(card, maxEdge: 160, fast: true).then((p) {
+            if (mounted && target == _target && _preview == null && _placeholder == null) setState(() => _placeholder = p);
+          });
+        }
+        if (!await SourcePrefetch.take(card, path)) await CardChannel.instance.importSource(card, path);
       }
       final image = await _decode(path, maxEdge: _previewEdge);
       if (!mounted || target != _target) return image.dispose();
@@ -136,7 +149,13 @@ class _EditorScreenState extends State<EditorScreen> {
           ..add(params);
         _h = 0;
         _status = null;
+        _placeholder = null;
       });
+      // Editing several: the next one comes off the card while this one is edited.
+      if (_index + 1 < widget.targets.length) {
+        final next = widget.targets[_index + 1];
+        if (next.existing == null && next.card != null) SourcePrefetch.warm(next.card!);
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
@@ -234,6 +253,8 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     setState(() {
       _index++;
+      _preview?.dispose();
+      _preview = null;
       _cropped?.dispose();
       _cropped = null;
       _croppedFor = null;
@@ -295,7 +316,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // --- Cropped preview for the Body and Adjust tools ------------------------------
 
-  String _cropKey(EditParams p) => '${p.quarterTurns}|${p.flipH}|${p.straighten}|${p.crop}';
+  // Every digit of the crop: Rect.toString rounds to 0.1, so a small change to
+  // the frame used to keep the old preview, squeezed into the new frame.
+  String _cropKey(EditParams p) {
+    final c = p.crop;
+    return '${p.quarterTurns}|${p.flipH}|${p.straighten}|${c.left},${c.top},${c.right},${c.bottom}';
+  }
 
   void _ensureCropped() {
     final src = _preview;
@@ -413,7 +439,21 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Widget _stage() {
     final src = _preview;
-    if (src == null) return _busy();
+    if (src == null) {
+      final shown = _placeholder;
+      if (shown == null || _error != null) return _busy();
+      // The photo straight away (where the crop view will put it), while the full one loads.
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 84, 28, 28),
+            child: Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
+          ),
+          Positioned(left: 0, right: 0, bottom: 20, child: Center(child: _loadingPill())),
+        ],
+      );
+    }
     Widget view;
     if (_comparing) {
       view = CustomPaint(painter: _ImagePainter(src), size: Size.infinite); // ignores the crop: the whole original
@@ -502,6 +542,19 @@ class _EditorScreenState extends State<EditorScreen> {
       ],
     );
   }
+
+  Widget _loadingPill() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(color: const Color(0xE616161B), borderRadius: BorderRadius.circular(24)),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        const SizedBox(width: 10),
+        Text(_status ?? '', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+      ],
+    ),
+  );
 
   Widget _busy() => ColoredBox(
     color: const Color(0xAA000000),
@@ -786,9 +839,14 @@ class _CropStageState extends State<_CropStage> {
   Size get _o => orientedSize(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), widget.params);
 
   Rect _photoIn(Size box) {
-    if (box != _box) {
+    final old = _box;
+    if (box != old) {
       _box = box;
-      _photo = null;
+      // The panel below grew or shrank (its hint is one line or two): keep the view, re-centred.
+      final photo = _photo;
+      _photo = photo == null || old == null
+          ? null
+          : photo.shift(Offset((box.width - old.width) / 2, (box.height - old.height) / 2));
     }
     return _photo ??= fitRect(_o, box, pad: 28, top: 56);
   }

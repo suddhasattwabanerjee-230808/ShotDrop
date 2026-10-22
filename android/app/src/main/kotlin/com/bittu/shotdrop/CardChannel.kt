@@ -22,15 +22,20 @@ import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
 import android.provider.DocumentsContract
 import android.provider.MediaStore
+import android.system.Os
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingDeque
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /**
  * Reads the camera's SD card (plugged in over OTG) through the Storage Access
@@ -42,8 +47,11 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     private val events = EventChannel(messenger, "shotdrop/card/events")
     private val main = Handler(Looper.getMainLooper())
 
-    // Card reads are slow (USB 2 over OTG), so a few at a time; listing gets its own thread.
-    private val io = Executors.newFixedThreadPool(3)
+    // Card reads are slow (USB 2 over OTG), so a few at a time, newest request first: the
+    // photos on screen now load before the ones scrolled past. Listing gets its own thread.
+    private val io = ThreadPoolExecutor(3, 3, 0L, TimeUnit.MILLISECONDS, object : LinkedBlockingDeque<Runnable>() {
+        override fun offer(e: Runnable): Boolean = offerFirst(e)
+    })
     private val lister = Executors.newSingleThreadExecutor()
 
     private var pendingPick: MethodChannel.Result? = null
@@ -362,13 +370,14 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
             file.setLastModified(System.currentTimeMillis()) // used: the storage tidy-up keeps it longer
             return file.absolutePath
         }
-        // Phone photos: Android keeps thumbnails of its own (upright, any format); the card's camera JPEGs carry one in EXIF.
+        // Phone photos: Android keeps thumbnails of its own (upright, any format). Card JPEGs
+        // carry previews: a ~640 px one after the photo (MPF, Nikon and others), a tiny one in EXIF.
         val bitmap = when {
             uri.authority == MediaStore.AUTHORITY && (fast || maxEdge <= 512) ->
                 runCatching { activity.contentResolver.loadThumbnail(uri, android.util.Size(maxEdge, maxEdge), null) }.getOrNull()
                     ?: decodeUpright(uri, maxEdge)
-            fast -> decodeExifThumbnail(uri)
-            else -> decodeUpright(uri, maxEdge)
+            fast -> decodeMpfPreview(uri, maxOf(maxEdge, 640), 0) ?: decodeExifThumbnail(uri)
+            else -> decodeMpfPreview(uri, maxEdge, maxEdge) ?: decodeUpright(uri, maxEdge)
         } ?: return null
         writeJpeg(bitmap, file, if (fast) 80 else 88)
         bitmap.recycle()
@@ -384,24 +393,63 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
         return bitmap?.let { upright(it, orientation) }
     }
 
-    /** The whole photo, decoded at roughly [maxEdge] and turned upright. */
+    /**
+     * The preview a camera stores after the photo itself in an MPF block (Nikon's is
+     * 640 px), decoded at most [maxEdge] and turned upright; null if there's none at
+     * least [minEdge] px. Only the file's header and the preview are read, a few
+     * dozen KB instead of the whole 10 MB photo, so a card gallery fills in fast.
+     */
+    private fun decodeMpfPreview(uri: Uri, maxEdge: Int, minEdge: Int): Bitmap? = runCatching {
+        activity.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            val fd = pfd.fileDescriptor
+            fun read(at: Long, n: Int): ByteArray? {
+                if (n <= 0) return null
+                val buf = ByteArray(n)
+                var got = 0
+                while (got < n) {
+                    val r = Os.pread(fd, buf, got, n - got, at + got)
+                    if (r <= 0) return null
+                    got += r
+                }
+                return buf
+            }
+            val (at, size) = findMpfPreview(::read) ?: return@use null
+            val bytes = read(at, size) ?: return@use null
+            if (bytes[0] != 0xFF.toByte() || bytes[1] != 0xD8.toByte()) return@use null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (maxOf(bounds.outWidth, bounds.outHeight) < maxOf(minEdge, 1)) return@use null
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleFor(bounds, maxEdge) }
+            val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return@use null
+            // The preview is stored sideways like the photo; the photo's EXIF says which way is up.
+            val orientation = ExifInterface(fd).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            upright(decoded, orientation, minOf(1f, maxEdge.toFloat() / maxOf(decoded.width, decoded.height)))
+        }
+    }.getOrNull()
+
+    /** The whole photo, decoded at roughly [maxEdge] and turned upright. The file is read once. */
     private fun decodeUpright(uri: Uri, maxEdge: Int): Bitmap? {
-        val resolver = activity.contentResolver
+        val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
             // A NEF without a JPEG twin: fall back to the preview inside it.
             return decodeExifThumbnail(uri)
         }
-        var sample = 1
-        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxEdge) sample *= 2
-        val options = BitmapFactory.Options().apply { inSampleSize = sample }
-        val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) } ?: return null
-        val orientation = resolver.openFileDescriptor(uri, "r")?.use {
-            ExifInterface(it.fileDescriptor).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-        } ?: ExifInterface.ORIENTATION_NORMAL
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleFor(bounds, maxEdge) }
+        val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+        val orientation = runCatching {
+            ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
         val scale = minOf(1f, maxEdge.toFloat() / maxOf(decoded.width, decoded.height))
         return upright(decoded, orientation, scale)
+    }
+
+    /** The largest power-of-two shrink that still leaves at least [maxEdge] px. */
+    private fun sampleFor(bounds: BitmapFactory.Options, maxEdge: Int): Int {
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxEdge) sample *= 2
+        return sample
     }
 
     private fun upright(bitmap: Bitmap, orientation: Int, scale: Float = 1f): Bitmap {
@@ -445,6 +493,60 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
         resolver.openOutputStream(uri)?.use { out -> file.inputStream().use { it.copyTo(out) } }
         resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
         return uri.toString()
+    }
+
+    // --- MPF (CIPA DC-007): the JPEG segment listing the extra images after the photo ---
+
+    /** Where in the file the largest extra image starts, and its size; null if the JPEG has no MPF. */
+    private fun findMpfPreview(read: (Long, Int) -> ByteArray?): Pair<Long, Int>? {
+        val soi = read(0, 2) ?: return null
+        if (soi[0] != 0xFF.toByte() || soi[1] != 0xD8.toByte()) return null
+        var at = 2L
+        repeat(40) {
+            val head = read(at, 4) ?: return null
+            if (head[0] != 0xFF.toByte()) return null
+            val marker = head[1].toInt() and 0xFF
+            if (marker == 0xDA || marker == 0xD9) return null // the pixels start: no MPF before them
+            val length = ((head[2].toInt() and 0xFF) shl 8) or (head[3].toInt() and 0xFF)
+            if (marker == 0xE2 && length > 16) {
+                val seg = read(at + 4, length - 2) ?: return null
+                if (seg[0] == 'M'.code.toByte() && seg[1] == 'P'.code.toByte() && seg[2] == 'F'.code.toByte() && seg[3] == 0.toByte()) {
+                    return runCatching { parseMpf(seg, at + 8) }.getOrNull()
+                }
+            }
+            at += 2 + length
+        }
+        return null
+    }
+
+    /** [seg] is the APP2 segment's data: "MPF\0", then a TIFF block (at [tiffAt] in the file) that offsets count from. */
+    private fun parseMpf(seg: ByteArray, tiffAt: Long): Pair<Long, Int>? {
+        val base = 4
+        val little = seg[base] == 'I'.code.toByte()
+        fun u8(i: Int) = seg[i].toInt() and 0xFF
+        fun u16(i: Int) = if (little) u8(i) or (u8(i + 1) shl 8) else (u8(i) shl 8) or u8(i + 1)
+        fun u32(i: Int): Long = if (little) {
+            u16(i).toLong() or (u16(i + 2).toLong() shl 16)
+        } else {
+            (u16(i).toLong() shl 16) or u16(i + 2).toLong()
+        }
+        val ifd = base + u32(base + 4).toInt()
+        for (k in 0 until u16(ifd)) {
+            val e = ifd + 2 + k * 12
+            if (u16(e) != 0xB002) continue // MP Entry: 16 bytes per image, the photo itself first
+            val images = (u32(e + 4) / 16).toInt()
+            val list = base + u32(e + 8).toInt()
+            var best: Pair<Long, Int>? = null
+            for (j in 1 until images) {
+                // Only the "large thumbnail" kinds (0x01000x): an Ultra HDR photo's gain map is an MPF image too.
+                if ((u32(list + j * 16) and 0xFF0000L) != 0x010000L) continue
+                val size = u32(list + j * 16 + 4)
+                val offset = u32(list + j * 16 + 8)
+                if (offset > 0 && size in 1L..8_000_000L && size > (best?.second ?: 0)) best = (tiffAt + offset) to size.toInt()
+            }
+            return best
+        }
+        return null
     }
 
     private fun sha1(s: String): String =

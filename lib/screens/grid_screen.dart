@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 
 import '../date_filter.dart';
 import '../models.dart';
+import '../prefetch.dart';
 import '../stores.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'date_filter_sheet.dart';
 import 'editor_screen.dart';
 import 'home_shell.dart';
 import 'viewer_screen.dart';
@@ -28,50 +30,15 @@ class _GridScreenState extends State<GridScreen> {
   final _selected = <String>{}; // CardShot.id
   var _dates = DateFilter.all;
 
-  /// The date filter's choices; Pick Dates… opens the calendar.
+  /// The date and time-of-day filter, in a sheet that counts what it'll show.
   Future<void> _pickDates(List<CardShot> all) async {
-    final picked = await showModalBottomSheet<DatePreset>(
+    final picked = await showModalBottomSheet<DateFilter>(
       context: context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: Text('Show Photos From', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-            ),
-            for (final p in DatePreset.values)
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-                leading: Icon(p == DatePreset.custom ? Icons.date_range_rounded : Icons.event_rounded),
-                title: Text(
-                  p == DatePreset.custom && _dates.preset == DatePreset.custom ? _dates.label : p.label,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                trailing: _dates.preset == p ? const Icon(Icons.check_rounded, color: accent) : null,
-                onTap: () => Navigator.pop(context, p),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      isScrollControlled: true,
+      builder: (context) => DateFilterSheet(initial: _dates, taken: [for (final s in all) s.taken]),
     );
-    if (picked == null || !mounted) return;
-    if (picked != DatePreset.custom) return setState(() => _dates = DateFilter.preset(picked));
-    final now = DateTime.now();
-    final oldest = all.isEmpty ? now : all.last.taken;
-    final newest = all.isEmpty ? now : all.first.taken;
-    final range = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(oldest.year, oldest.month, oldest.day),
-      lastDate: newest.isAfter(now) ? newest : now,
-      initialDateRange: _dates.preset == DatePreset.custom ? DateTimeRange(start: _dates.first!, end: _dates.last!) : null,
-      helpText: 'Show Photos From',
-      saveText: 'Show',
-    );
-    if (range != null && mounted) setState(() => _dates = DateFilter.range(range.start, range.end));
+    if (picked != null && mounted) setState(() => _dates = picked);
   }
 
   bool get _selecting => _selected.isNotEmpty;
@@ -98,6 +65,10 @@ class _GridScreenState extends State<GridScreen> {
     HapticFeedback.selectionClick();
     setState(() => _selected.contains(s.id) ? _selected.remove(s.id) : _selected.add(s.id));
     _syncBar();
+    // Picked photos are about to be edited or kept: start copying the first few off the card.
+    if (_selected.contains(s.id) && _selected.length <= 6 && AppScope.of(context).uploads.byShot(s.id) == null) {
+      SourcePrefetch.warm(s.jpg!);
+    }
   }
 
   void _toggleDay(List<CardShot> day) {
@@ -232,11 +203,11 @@ class _GridScreenState extends State<GridScreen> {
         body: shots.isEmpty && !_dates.isAll
             ? StatePanel(
                 icon: Icons.event_busy_rounded,
-                title: 'No Photos On These Dates',
+                title: 'No Photos For This Filter',
                 body: '${_dates.label}: nothing ${phone ? 'on the phone' : 'on the card'}.',
                 actions: [
                   FilledButton(onPressed: () => setState(() => _dates = DateFilter.all), child: const Text('Show All Dates')),
-                  TextButton(onPressed: () => _pickDates(all), child: const Text('Pick Other Dates')),
+                  TextButton(onPressed: () => _pickDates(all), child: const Text('Change The Filter')),
                 ],
               )
             : shots.isEmpty
@@ -350,9 +321,17 @@ class _DateChip extends StatelessWidget {
             children: [
               const Icon(Icons.event_rounded, size: 16, color: onAccent),
               const SizedBox(width: 6),
-              Text(label, style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800, fontSize: 13)),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 116),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: onAccent, fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+              ),
               IconButton(
-                tooltip: 'Show All Dates',
+                tooltip: 'Clear The Filter',
                 visualDensity: VisualDensity.compact,
                 onPressed: onClear,
                 icon: const Icon(Icons.close_rounded, size: 18, color: onAccent),

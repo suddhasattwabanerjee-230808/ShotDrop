@@ -297,6 +297,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '2f_date_sheet');
     await tester.tap(find.text('Last 7 Days'));
+    await tester.tap(find.text('Evening'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '2f2_date_sheet_picked');
+    await tester.tap(find.textContaining(RegExp(r'^(Show \d|No Photos Match)')));
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '2g_phone_last_week');
     await tester.tap(bar(Icons.sd_card_outlined));
@@ -328,6 +332,13 @@ void main() {
     await corner.up();
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '4e_crop_corner_done');
+    // A small nudge of the same corner (under a tenth of the photo): the crop shown must follow it.
+    final nudge = await tester.startGesture(const Offset(110, 284));
+    await nudge.moveBy(const Offset(12, 12));
+    await nudge.moveBy(const Offset(12, 12));
+    await nudge.up();
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '4f_crop_nudged');
 
     await tester.tap(find.text('Body'));
     await shot(tester, '5_editor_body');

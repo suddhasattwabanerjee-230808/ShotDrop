@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_channel.dart';
+import '../prefetch.dart';
 import '../storage.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -81,6 +82,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && mounted) PublishScreen.showIfPending(context);
     if (state == AppLifecycleState.paused) {
       ThumbCache.clear();
+      SourcePrefetch.clear();
       clearCacheFiles(keep: _updater.installing).ignore();
     }
   }

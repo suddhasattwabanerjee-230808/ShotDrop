@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.3] - 2026-10-22 (build 13)
+
+A truthful crop, a sharper date filter, and a faster card.
+
+- **Crop shows what you cropped.** After a small change to the frame (under a tenth of the photo), the crop view kept showing the previous crop squeezed into the new frame, so it looked wider and slimmer than what was saved. It now always shows exactly the part that will be saved. The view also no longer jumps when the hint under the photo changes from one line to two.
+- **Filter by date and time of day** in both galleries: All Dates, Today, Yesterday, Last 7 Days, Last 30 Days, **One Date** or **Date Range**, together with **Morning** (5 AM–12 PM), **Afternoon** (12–5 PM), **Evening** (5–9 PM), **Night** (9 PM–5 AM) or your own **Time Range**. The button shows how many photos match before you apply it.
+- **The card gallery fills in much faster.** Tiles use the preview the camera stores inside each JPEG (a few dozen KB) instead of reading the whole 10 MB photo, the photos on screen load before the ones scrolled past, and a full photo is read off the card once instead of up to three times. Coming back to ShotDrop, tiles still in memory show at once.
+- **The editor opens faster.** A photo looked at in the viewer for a moment, or picked in the gallery, is copied off the card in the background, so Edit doesn't wait for it. While a photo is still coming off the card, the editor shows it straight away. Editing several photos, the next one is copied while you edit the current one.
+
 ## [0.6.2] - 2026-10-22 (build 12)
 
 A crop you can see, and a date filter.
