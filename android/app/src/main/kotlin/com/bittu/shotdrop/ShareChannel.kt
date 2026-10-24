@@ -44,6 +44,7 @@ class ShareChannel(private val activity: Activity, messenger: BinaryMessenger) :
                     }
                     result.success(share(app, kind, call.argument<List<String>>("paths")!!))
                 }
+                "shareAny" -> result.success(shareAny(call.argument<List<String>>("paths")!!))
                 "openUrl" -> result.success(openUrl(call.argument<String>("url")!!, call.argument<String>("app")))
                 "moveInGallery" -> {
                     val values = ContentValues().apply {
@@ -107,6 +108,30 @@ class ShareChannel(private val activity: Activity, messenger: BinaryMessenger) :
             }
         } catch (e: ActivityNotFoundException) {
             "notInstalled"
+        }
+    }
+
+    /**
+     * Android's own share sheet with [paths]: WhatsApp, Bluetooth, Drive, Messages
+     * and whatever else is installed, like any gallery's Share. False if nothing takes photos.
+     */
+    private fun shareAny(paths: List<String>): Boolean {
+        val authority = "${activity.packageName}.files"
+        val uris = ArrayList(paths.map { FileProvider.getUriForFile(activity, authority, File(it)) })
+        if (uris.isEmpty()) return false
+        val intent = if (uris.size == 1) {
+            Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_STREAM, uris[0])
+        } else {
+            Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+        }
+        intent.type = "image/jpeg"
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        intent.clipData = ClipData.newRawUri(null, uris[0]).apply { uris.drop(1).forEach { addItem(ClipData.Item(it)) } }
+        return try {
+            activity.startActivity(Intent.createChooser(intent, null).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+            true
+        } catch (e: ActivityNotFoundException) {
+            false
         }
     }
 

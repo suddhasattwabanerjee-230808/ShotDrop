@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0] - 2026-10-24 (build 17)
+
+People, sharing, and sideways photos turned upright.
+
+- **People filter in both galleries.** A face button in the top bar opens People: everyone ShotDrop has found in two photos or more, as round faces with how many photos each is in. Tap someone to see only their photos (it works together with the date filter); their face sits in the top bar, ✕ shows everyone again. Faces are found on the phone while ShotDrop is open, newest photos first, and remembered, so each photo is looked at once. Nothing is uploaded.
+- **Share from Selected.** Long-press photos in Selected and tap Share for Android's own share sheet: WhatsApp, Messages, Bluetooth, Drive and every other app that takes photos. The edited version goes where there is one.
+- **Sideways people turned upright.** A landscape photo with a person lying sideways (camera held upright, but saved landscape) shows in portrait in the galleries and the viewer, turned whichever way stands them up (usually left 90°). Selected, the editor and sharing get it upright too; the editor's turn button still turns it back. Real landscape shots stay as they are.
+
 ## [0.7.1] - 2026-10-22 (build 16)
 
 Little cartoon friends around the app. Appearance only, as before.

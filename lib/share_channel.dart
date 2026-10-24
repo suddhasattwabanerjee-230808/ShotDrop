@@ -31,6 +31,9 @@ class ShareChannel {
     return ShareOutcome.values.asNameMap()[r] ?? ShareOutcome.notInstalled;
   }
 
+  /// Android's share sheet with [paths] (WhatsApp, Bluetooth, Drive…). False if no app takes photos.
+  Future<bool> shareAny(List<String> paths) async => await _m.invokeMethod<bool>('shareAny', {'paths': paths}) ?? false;
+
   /// Opens [url], in [app] when it's installed and handles the link.
   Future<bool> openUrl(String url, {SocialApp? app}) async =>
       await _m.invokeMethod<bool>('openUrl', {'url': url, 'app': app?.name}) ?? false;

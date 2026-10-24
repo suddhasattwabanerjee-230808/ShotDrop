@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../faces.dart';
 import '../models.dart';
 import '../prefetch.dart';
 import '../theme.dart';
@@ -317,7 +318,10 @@ class _ZoomablePhotoState extends State<_ZoomablePhoto> with SingleTickerProvide
       maxScale: 5,
       child: Hero(
         tag: 'shot-${widget.shot.id}',
-        child: CardImage(file: widget.shot.primary, maxEdge: _viewerEdge, fit: BoxFit.contain),
+        child: Upright(
+          file: widget.shot.primary,
+          child: CardImage(file: widget.shot.primary, maxEdge: _viewerEdge, fit: BoxFit.contain),
+        ),
       ),
     ),
   );

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -13,6 +14,7 @@ import 'package:shotdrop/edit/render.dart';
 import 'package:shotdrop/edit/reshape.dart';
 import 'package:shotdrop/edit/shape.dart';
 import 'package:shotdrop/edit/story.dart';
+import 'package:shotdrop/faces.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/publish.dart';
 import 'package:shotdrop/storage.dart';
@@ -28,6 +30,50 @@ CardFile f(String path, {int modified = 1000, int size = 10}) => CardFile(
 );
 
 void main() {
+  group('People', () {
+    // A unit vector near axis [axis], nudged by [jitter] along the next one.
+    Float32List near(int axis, double jitter) {
+      final v = Float32List(192);
+      v[axis] = 1;
+      v[(axis + 1) % 192] = jitter;
+      final n = math.sqrt(1 + jitter * jitter);
+      for (var i = 0; i < v.length; i++) {
+        v[i] /= n;
+      }
+      return v;
+    }
+
+    FaceEntry face(String photo, int n, Float32List e, {double size = 0.01}) =>
+        (id: '$photo#$n', photo: photo, crop: '/faces/$photo-$n.jpg', size: size, e: e);
+
+    test('alike faces in different photos are one person; strangers and one-offs are left out', () {
+      final people = groupFaces([
+        face('a', 0, near(0, 0.1), size: 0.04),
+        face('b', 0, near(0, -0.2)),
+        face('c', 0, near(0, 0.3)),
+        face('c', 1, near(5, 0)),
+        face('d', 0, near(5, 0.15)),
+        face('e', 0, near(9, 0)), // seen once: not a "person" yet
+      ]);
+      expect(people, hasLength(2));
+      expect(people.first.photos, {'a', 'b', 'c'});
+      expect(people.first.id, 'a#0'); // the biggest face
+      expect(people.first.cover, '/faces/a-0.jpg');
+      expect(people.last.photos, {'c', 'd'});
+    });
+
+    test('a face survives the trip to faces.json', () {
+      final f = Face(crop: '/x.jpg', box: const Rect.fromLTRB(0.1, 0.2, 0.3, 0.4), embedding: near(3, 0.2));
+      final back = Face.fromJson(f.toJson());
+      expect(back.crop, '/x.jpg');
+      expect(back.box, f.box);
+      expect(back.embedding, f.embedding);
+      final photo = PhotoFaces.fromJson(const PhotoFaces(turn: 3).toJson());
+      expect(photo.turn, 3);
+      expect(photo.faces, isEmpty);
+    });
+  });
+
   group('pairShots', () {
     test('pairs JPG and NEF of the same shot, newest first, drops other files', () {
       final shots = pairShots([
@@ -182,7 +228,10 @@ void main() {
     });
 
     test('hidden legs are guessed down from the hips', () {
-      final b = BodyAnchors.fromLandmarks({for (final e in standing.entries) if (e.key < 25) e.key: e.value})!;
+      final b = BodyAnchors.fromLandmarks({
+        for (final e in standing.entries)
+          if (e.key < 25) e.key: e.value,
+      })!;
       expect(b.legs, hasLength(2));
       expect(b.legs.first.cy, greaterThan(0.5));
     });
@@ -465,7 +514,9 @@ void main() {
   });
 
   group('publish session', () {
-    final items = [for (final id in ['A', 'B', 'C']) _item(id)];
+    final items = [
+      for (final id in ['A', 'B', 'C']) _item(id),
+    ];
 
     test('later is everything not done, splitting gives one step per photo', () {
       final s = PublishSession(mode: PublishMode.post, steps: buildPlan(items, PublishMode.post), fit: PostFit.crop)
@@ -497,7 +548,13 @@ void main() {
       expect(zoomed.center.dx, closeTo(0.5, 1e-6));
       expect(zoomed.center.dy, closeTo(0.5, 1e-6));
       // Zooming out stops once the photo just covers the frame; it never leaves the photo.
-      final out = panZoomCrop(photo: photo, frame: frame, focal0: Offset.zero, focal: const Offset(-900, 50), scale: 0.1);
+      final out = panZoomCrop(
+        photo: photo,
+        frame: frame,
+        focal0: Offset.zero,
+        focal: const Offset(-900, 50),
+        scale: 0.1,
+      );
       expect(out.height, closeTo(1, 1e-6));
       expect(out.left, closeTo(0.5, 1e-6));
       expect(out.top, 0);

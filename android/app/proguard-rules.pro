@@ -8,3 +8,8 @@
 -keep class * extends androidx.work.ListenableWorker {
     public <init>(android.content.Context, androidx.work.WorkerParameters);
 }
+
+# TensorFlow Lite (the People filter's face model) is reached from its native
+# code by name, which R8 can't see.
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.lite.**

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../date_filter.dart';
+import '../faces.dart';
 import '../models.dart';
 import '../prefetch.dart';
 import '../stores.dart';
@@ -10,6 +11,7 @@ import '../theme_switch.dart';
 import '../widgets.dart';
 import 'date_filter_sheet.dart';
 import 'editor_screen.dart';
+import 'people_sheet.dart';
 import 'home_shell.dart';
 import 'viewer_screen.dart';
 
@@ -30,6 +32,18 @@ class GridScreen extends StatefulWidget {
 class _GridScreenState extends State<GridScreen> {
   final _selected = <String>{}; // CardShot.id
   var _dates = DateFilter.all;
+  String? _personId; // the People filter: Person.id
+
+  /// The People filter, in a sheet of everyone found in this gallery.
+  Future<void> _pickPerson(List<CardShot> all) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => PeopleSheet(shots: all, current: _personId),
+    );
+    if (picked != null && mounted) setState(() => _personId = picked);
+  }
 
   /// The date and time-of-day filter, in a sheet that counts what it'll show.
   Future<void> _pickDates(List<CardShot> all) async {
@@ -133,19 +147,26 @@ class _GridScreenState extends State<GridScreen> {
 
   // The list changes under this screen (rescan, another card, new photos on
   // the phone), so it listens itself: the home screen hands it over as a const widget.
+  // With someone picked, the faces too: their photos are still being found.
   @override
-  Widget build(BuildContext context) =>
-      ListenableBuilder(listenable: _source, builder: (context, _) => _build(context));
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _personId == null ? _source : Listenable.merge([_source, FaceIndex.instance]),
+    builder: (context, _) => _build(context),
+  );
 
   Widget _build(BuildContext context) {
     final scope = AppScope.of(context);
     final phone = widget.gallery == Gallery.phone;
     final all = _source.shots;
-    final shots = _dates.isAll
+    final person = _personId == null ? null : FaceIndex.instance.person(_personId!);
+    final filtered = !_dates.isAll || person != null;
+    final shots = !filtered
         ? all
         : [
             for (final s in all)
-              if (_dates.contains(s.taken)) s,
+              if (_dates.contains(s.taken) &&
+                  (person == null || (s.jpg != null && person.photos.contains(FaceIndex.keyOf(s.jpg!)))))
+                s,
           ];
     _selected.retainAll({for (final s in shots) s.id});
     final days = <List<CardShot>>[];
@@ -176,7 +197,7 @@ class _GridScreenState extends State<GridScreen> {
                     Text(phone ? 'Phone Gallery' : 'SD Card Gallery'),
                     Text(
                       [
-                        _dates.isAll ? '${shots.length}' : '${shots.length} of ${all.length}',
+                        filtered ? '${shots.length} of ${all.length}' : '${shots.length}',
                         phone ? (all.length == 1 ? 'Photo' : 'Photos') : 'Shots',
                         if (!phone && rawCount > 0) '· $rawCount With RAW',
                         if (phone && scope.phone.partial) '· Only The Ones You Allowed',
@@ -198,28 +219,49 @@ class _GridScreenState extends State<GridScreen> {
                       onTap: () => _pickDates(all),
                       onClear: () => setState(() => _dates = DateFilter.all),
                     ),
+                  if (person == null)
+                    IconButton(
+                      tooltip: 'Filter By People',
+                      onPressed: () => _pickPerson(all),
+                      icon: const Icon(Icons.face_rounded),
+                    )
+                  else
+                    _PersonChip(
+                      person: person,
+                      onTap: () => _pickPerson(all),
+                      onClear: () => setState(() => _personId = null),
+                    ),
                   if (phone && scope.phone.partial)
                     TextButton(onPressed: scope.phone.requestAccess, child: const Text('Allow All')),
-                  IconButton(
-                    tooltip: phone ? 'Refresh' : 'Rescan The Card',
-                    onPressed: _source.refresh,
-                    icon: const Icon(Icons.refresh_rounded),
-                  ),
+                  // Filtered, the bar is short of room: pull down to refresh instead.
+                  if (!filtered)
+                    IconButton(
+                      tooltip: phone ? 'Refresh' : 'Rescan The Card',
+                      onPressed: _source.refresh,
+                      icon: const Icon(Icons.refresh_rounded),
+                    ),
                   const ThemeToggle(),
                 ],
                 bottom: GalleryToggle(current: widget.gallery),
               ),
-        body: shots.isEmpty && !_dates.isAll
+        body: shots.isEmpty && filtered
             ? StatePanel(
-                icon: Icons.event_busy_rounded,
+                icon: person != null ? Icons.face_retouching_off_rounded : Icons.event_busy_rounded,
                 title: 'No Photos For This Filter',
-                body: '${_dates.label}: nothing ${phone ? 'on the phone' : 'on the card'}.',
+                body: person != null && _dates.isAll
+                    ? 'Nothing of this person ${phone ? 'on the phone' : 'on the card'}.'
+                    : '${_dates.label}${person != null ? ', of this person' : ''}: '
+                          'nothing ${phone ? 'on the phone' : 'on the card'}.',
                 actions: [
                   FilledButton(
-                    onPressed: () => setState(() => _dates = DateFilter.all),
-                    child: const Text('Show All Dates'),
+                    onPressed: () => setState(() {
+                      _dates = DateFilter.all;
+                      _personId = null;
+                    }),
+                    child: const Text('Show All Photos'),
                   ),
-                  TextButton(onPressed: () => _pickDates(all), child: const Text('Change The Filter')),
+                  if (!_dates.isAll)
+                    TextButton(onPressed: () => _pickDates(all), child: const Text('Change The Dates')),
                 ],
               )
             : shots.isEmpty
@@ -356,6 +398,48 @@ class _DateChip extends StatelessWidget {
   );
 }
 
+/// The person picked in the People filter, in the title bar: their face, tap
+/// to pick someone else, ✕ to show everyone.
+class _PersonChip extends StatelessWidget {
+  const _PersonChip({required this.person, required this.onTap, required this.onClear});
+  final Person person;
+  final VoidCallback onTap, onClear;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 4),
+    child: Material(
+      color: grape,
+      shape: ChunkyBorder(borderRadius: BorderRadius.circular(20), depth: 3, lip: deeper(grape)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                child: ClipOval(child: FaceAvatar(person: person)),
+              ),
+              IconButton(
+                tooltip: 'Show Everyone',
+                visualDensity: VisualDensity.compact,
+                onPressed: onClear,
+                icon: const Icon(Icons.close_rounded, size: 18, color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /// SD Card | Phone, under a gallery's title: switches to the other gallery.
 class GalleryToggle extends StatelessWidget implements PreferredSizeWidget {
   const GalleryToggle({super.key, required this.current});
@@ -478,7 +562,10 @@ class _Tile extends StatelessWidget {
                   : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(selected ? 18 : 14),
-                child: CardImage(file: shot.primary, maxEdge: 360),
+                child: Upright(
+                  file: shot.primary,
+                  child: CardImage(file: shot.primary, maxEdge: 360),
+                ),
               ),
             ),
           ),

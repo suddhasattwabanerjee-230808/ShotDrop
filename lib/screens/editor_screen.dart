@@ -10,6 +10,7 @@ import '../edit/crop.dart';
 import '../edit/filters.dart';
 import '../edit/render.dart';
 import '../edit/shape.dart';
+import '../faces.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
@@ -132,7 +133,9 @@ class _EditorScreenState extends State<EditorScreen> {
             if (mounted && target == _target && _preview == null && _placeholder == null) setState(() => _placeholder = p);
           });
         }
-        if (!await SourcePrefetch.take(card, path)) await CardChannel.instance.importSource(card, path);
+        if (!await SourcePrefetch.take(card, path)) {
+          await CardChannel.instance.importSource(card, path, turn: await FaceIndex.instance.turnFor(card));
+        }
       }
       final image = await _decode(path, maxEdge: _previewEdge);
       if (!mounted || target != _target) return image.dispose();
@@ -450,7 +453,10 @@ class _EditorScreenState extends State<EditorScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(28, 84, 28, 28),
-            child: Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
+            child: switch (_target.card) {
+              final card? => Upright(file: card, child: Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true)),
+              null => Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
+            },
           ),
           Positioned(left: 0, right: 0, bottom: 20, child: Center(child: _loadingPill())),
         ],

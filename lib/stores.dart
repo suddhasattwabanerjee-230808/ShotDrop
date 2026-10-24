@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app_channel.dart';
 import 'card_channel.dart';
+import 'faces.dart';
 import 'models.dart';
 import 'prefetch.dart';
 import 'publish.dart';
@@ -333,7 +334,9 @@ class UploadStore extends ChangeNotifier {
         // A posted photo's files may have been cleared (Settings > Storage): copy it again.
         if (!await File(path).exists()) {
           await File(path).parent.create(recursive: true);
-          if (!await SourcePrefetch.take(s.jpg!, path)) await _card.importSource(s.jpg!, path);
+          if (!await SourcePrefetch.take(s.jpg!, path)) {
+            await _card.importSource(s.jpg!, path, turn: await FaceIndex.instance.turnFor(s.jpg!));
+          }
         }
         if (existing != null) {
           await _replace(existing.copyWith(status: ItemStatus.selected));

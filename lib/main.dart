@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_channel.dart';
+import 'faces.dart';
 import 'screens/home_shell.dart';
 import 'screens/setup_screen.dart';
 import 'stores.dart';
@@ -28,7 +29,13 @@ Future<void> main() async {
     final social = SocialSettings();
     final updater = Updater();
     final settings = AppSettings();
-    for (final (name, step) in [('Upload folder', uploads.load), ('Instagram', social.load), ('settings', settings.load)]) {
+    final phone = PhoneStore();
+    for (final (name, step) in [
+      ('Upload folder', uploads.load),
+      ('Instagram', social.load),
+      ('settings', settings.load),
+      ('faces', FaceIndex.instance.load),
+    ]) {
       try {
         await step().timeout(const Duration(seconds: 5));
       } catch (e, st) {
@@ -39,7 +46,13 @@ Future<void> main() async {
     card.load();
     // In the background: a dot on Settings if there's a new version.
     if (settings.checkUpdates) updater.check();
-    runApp(ShotDropApp(card: card, phone: PhoneStore(), uploads: uploads, social: social, updater: updater, settings: settings));
+    runApp(
+      ShotDropApp(card: card, phone: phone, uploads: uploads, social: social, updater: updater, settings: settings),
+    );
+    // People and sideways photos: found in the background, card photos first.
+    FaceIndex.instance
+      ..track(card)
+      ..track(phone);
   }, reportError);
 }
 

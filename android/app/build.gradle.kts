@@ -89,4 +89,8 @@ dependencies {
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
     // On-device person outline for Slim (model bundled, works offline).
     implementation("com.google.mlkit:segmentation-selfie:16.0.0-beta6")
+    // On-device faces for the People filter and auto-turn (model bundled, works offline).
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    // Runs MobileFaceNet (assets/MobileFaceNet.tflite), which tells people apart.
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
 }

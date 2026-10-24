@@ -135,7 +135,8 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
                 )
             }
             "importSource" -> background(result) {
-                val bitmap = decodeUpright(Uri.parse(call.argument<String>("uri")), call.argument<Int>("maxEdge")!!)
+                // turn: quarter turns clockwise on top of upright (a sideways person, FaceChannel found).
+                val bitmap = decodeUpright(Uri.parse(call.argument<String>("uri")), call.argument<Int>("maxEdge")!!, call.argument<Int>("turn") ?: 0)
                     ?: throw IllegalStateException("Couldn't read this photo from the card")
                 writeJpeg(bitmap, File(call.argument<String>("dest")!!), 95)
                 bitmap.recycle()
@@ -384,6 +385,18 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
         return file.absolutePath
     }
 
+    /**
+     * An upright look at the photo at about [maxEdge] px for finding faces: Android's own
+     * thumbnail for phone photos, the camera's MPF preview for card ones (the whole photo
+     * only when there's none).
+     */
+    internal fun preview(uri: Uri, maxEdge: Int): Bitmap? = when (uri.authority) {
+        MediaStore.AUTHORITY ->
+            runCatching { activity.contentResolver.loadThumbnail(uri, android.util.Size(maxEdge, maxEdge), null) }.getOrNull()
+                ?: decodeUpright(uri, maxEdge)
+        else -> decodeMpfPreview(uri, maxEdge, maxEdge * 3 / 4) ?: decodeUpright(uri, maxEdge)
+    }
+
     /** The small preview the camera embeds in the file's EXIF data: read without touching the pixels. */
     private fun decodeExifThumbnail(uri: Uri): Bitmap? {
         val (orientation, bitmap) = activity.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
@@ -428,7 +441,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     }.getOrNull()
 
     /** The whole photo, decoded at roughly [maxEdge] and turned upright. The file is read once. */
-    private fun decodeUpright(uri: Uri, maxEdge: Int): Bitmap? {
+    private fun decodeUpright(uri: Uri, maxEdge: Int, turn: Int = 0): Bitmap? {
         val bytes = activity.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -442,7 +455,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
             ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
         }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
         val scale = minOf(1f, maxEdge.toFloat() / maxOf(decoded.width, decoded.height))
-        return upright(decoded, orientation, scale)
+        return upright(decoded, orientation, scale, turn)
     }
 
     /** The largest power-of-two shrink that still leaves at least [maxEdge] px. */
@@ -452,7 +465,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
         return sample
     }
 
-    private fun upright(bitmap: Bitmap, orientation: Int, scale: Float = 1f): Bitmap {
+    private fun upright(bitmap: Bitmap, orientation: Int, scale: Float = 1f, turn: Int = 0): Bitmap {
         val m = Matrix()
         if (scale < 1f) m.postScale(scale, scale)
         when (orientation) {
@@ -462,6 +475,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> m.postScale(-1f, 1f)
             ExifInterface.ORIENTATION_FLIP_VERTICAL -> m.postScale(1f, -1f)
         }
+        if (turn % 4 != 0) m.postRotate(90f * (turn % 4))
         if (m.isIdentity) return bitmap
         val out = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, m, true)
         if (out !== bitmap) bitmap.recycle()

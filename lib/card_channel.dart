@@ -63,9 +63,10 @@ class CardChannel {
     {'uri': file.uri, 'key': '${file.docId}|${file.modified}|${file.size}', 'maxEdge': maxEdge, 'fast': fast},
   );
 
-  /// Copies the card JPEG to [dest] as an upright JPEG, at most [maxEdge] px.
-  Future<void> importSource(CardFile file, String dest, {int maxEdge = 4000}) =>
-      _m.invokeMethod('importSource', {'uri': file.uri, 'dest': dest, 'maxEdge': maxEdge});
+  /// Copies the card JPEG to [dest] as an upright JPEG, at most [maxEdge] px,
+  /// then [turn] quarter turns clockwise (a person lying sideways, see FaceIndex).
+  Future<void> importSource(CardFile file, String dest, {int maxEdge = 4000, int turn = 0}) =>
+      _m.invokeMethod('importSource', {'uri': file.uri, 'dest': dest, 'maxEdge': maxEdge, 'turn': turn});
 
   /// Writes raw RGBA pixels to [dest] as a JPEG.
   Future<void> encodeJpeg(Uint8List rgba, int width, int height, String dest, {int quality = 92}) =>

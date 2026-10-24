@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models.dart';
+import '../share_channel.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
 import '../widgets.dart';
@@ -30,8 +31,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
   Future<void> _edit(List<UploadItem> items) async {
     final card = AppScope.of(context).card;
     final targets = [
-      for (final i in items)
-        EditTarget.fromItem(i, card: card.shots.where((s) => s.id == i.shotId).firstOrNull?.jpg),
+      for (final i in items) EditTarget.fromItem(i, card: card.shots.where((s) => s.id == i.shotId).firstOrNull?.jpg),
     ];
     final saved = await openEditor(context, targets);
     if (!mounted) return;
@@ -73,6 +73,25 @@ class _SelectedScreenState extends State<SelectedScreen> {
     controller.closed.then((_) => items.forEach(uploads.purge));
   }
 
+  /// Android's share sheet (WhatsApp, Bluetooth, Drive, Messages…) with the
+  /// picked photos: the edit where there is one, else the photo as kept.
+  Future<void> _share(List<UploadItem> items) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final paths = [
+      for (final i in items)
+        if (File(i.previewPath).existsSync()) i.previewPath,
+    ];
+    if (paths.isEmpty) return;
+    HapticFeedback.selectionClick();
+    final opened = await ShareChannel.instance.shareAny(paths).catchError((Object _) => false);
+    if (!mounted) return;
+    if (opened) {
+      setState(_picked.clear);
+    } else {
+      messenger.showSnackBar(const SnackBar(content: Text('No App On This Phone Can Take Photos')));
+    }
+  }
+
   void _toggle(UploadItem i) {
     HapticFeedback.selectionClick();
     setState(() => _picked.contains(i.shotId) ? _picked.remove(i.shotId) : _picked.add(i.shotId));
@@ -101,7 +120,10 @@ class _SelectedScreenState extends State<SelectedScreen> {
             appBar: _picking
                 ? AppBar(
                     backgroundColor: surface,
-                    leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => setState(_picked.clear)),
+                    leading: IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => setState(_picked.clear),
+                    ),
                     title: Text('${picked.length} picked'),
                     actions: [
                       TextButton(
@@ -192,10 +214,24 @@ class _SelectedScreenState extends State<SelectedScreen> {
                   ? SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                        child: FilledButton.icon(
-                          onPressed: () => _edit(picked),
-                          icon: const Icon(Icons.auto_fix_high_rounded),
-                          label: Text('Edit For Upload (${picked.length})'),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _share(picked),
+                                icon: const Icon(Icons.share_rounded),
+                                label: const Text('Share'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: FilledButton.icon(
+                                onPressed: () => _edit(picked),
+                                icon: const Icon(Icons.auto_fix_high_rounded),
+                                label: Text('Edit (${picked.length})'),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     )

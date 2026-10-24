@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shotdrop/main.dart';
+import 'package:shotdrop/faces.dart';
 import 'package:shotdrop/models.dart';
 import 'package:shotdrop/screens/editor_screen.dart';
 import 'package:shotdrop/screens/viewer_screen.dart';
@@ -187,7 +188,13 @@ void main() {
           case 'phoneList':
             return [
               for (final (i, f) in files.where((f) => f.name.endsWith('.JPG')).take(7).indexed)
-                {'uri': f.uri, 'docId': 'phone:$i', 'name': 'IMG_2026102$i.jpg', 'size': f.size, 'modified': f.modified - i * 86400000},
+                {
+                  'uri': f.uri,
+                  'docId': 'phone:$i',
+                  'name': 'IMG_2026102$i.jpg',
+                  'size': f.size,
+                  'modified': f.modified - i * 86400000,
+                },
             ];
           case 'saveToGallery':
             return 'content://media/1';
@@ -266,7 +273,14 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('preview-root'),
-        child: ShotDropApp(card: card, phone: PhoneStore(), uploads: uploads, social: social, updater: Updater(), settings: AppSettings()),
+        child: ShotDropApp(
+          card: card,
+          phone: PhoneStore(),
+          uploads: uploads,
+          social: social,
+          updater: Updater(),
+          settings: AppSettings(),
+        ),
       ),
     );
     await shot(tester, '0_setup');
@@ -301,6 +315,11 @@ void main() {
     Finder bar(IconData icon) => find.descendant(of: find.byType(BackdropFilter), matching: find.byIcon(icon));
     await tester.tap(bar(Icons.favorite_border_rounded));
     await shot(tester, '2b_selected');
+    await tester.longPress(find.descendant(of: find.byType(SliverGrid), matching: find.byType(Image)).first);
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '2b2_selected_picking');
+    await tester.tap(find.byIcon(Icons.close_rounded).first);
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(bar(Icons.settings_outlined));
     await shot(tester, '2c_settings');
     await tester.drag(find.byType(ListView).hitTestable(), const Offset(0, -3000));
@@ -323,6 +342,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await shot(tester, '2g_phone_last_week');
     await tester.tap(bar(Icons.sd_card_outlined));
+    await tester.pump(const Duration(milliseconds: 300));
+    // People: two found (their faces are stand-in crops of the fake photos).
+    final jpgs = files.where((f) => f.name.endsWith('.JPG')).toList();
+    Person person(int cover, List<int> photos) => Person(
+      id: '${FaceIndex.keyOf(jpgs[cover])}#0',
+      cover: jpgs[cover].uri,
+      faces: {for (final i in photos) '${FaceIndex.keyOf(jpgs[i])}#0'},
+      photos: {for (final i in photos) FaceIndex.keyOf(jpgs[i])},
+    );
+    FaceIndex.instance.people = [
+      person(1, [1, 3, 4, 7, 9]),
+      person(2, [2, 5, 6]),
+      person(8, [8, 10]),
+    ];
+    await tester.tap(find.byIcon(Icons.face_rounded).last);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '2h_people_sheet');
+    await tester.tap(find.text('5 Photos'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pump(const Duration(milliseconds: 400));
+    await shot(tester, '2i_grid_person');
+    await tester.tap(find.byTooltip('Show Everyone'));
     await tester.pump(const Duration(milliseconds: 300));
 
     final nav = tester.state<NavigatorState>(find.byType(Navigator));

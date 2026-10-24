@@ -8,11 +8,14 @@ class MainActivity : FlutterActivity() {
     private var card: CardChannel? = null
     private var share: ShareChannel? = null
     private var pose: PoseChannel? = null
+    private var faces: FaceChannel? = null
     private var app: AppChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        card = CardChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        val cards = CardChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        card = cards
+        faces = FaceChannel(this, flutterEngine.dartExecutor.binaryMessenger, cards::preview)
         share = ShareChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         pose = PoseChannel(flutterEngine.dartExecutor.binaryMessenger)
         app = AppChannel(this, flutterEngine.dartExecutor.binaryMessenger)
@@ -47,6 +50,8 @@ class MainActivity : FlutterActivity() {
         share = null
         pose?.dispose()
         pose = null
+        faces?.dispose()
+        faces = null
         app?.dispose()
         app = null
         super.onDestroy()
