@@ -7,11 +7,11 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app_channel.dart';
 import 'card_channel.dart';
-import 'faces.dart';
 import 'models.dart';
 import 'prefetch.dart';
 import 'publish.dart';
 import 'share_channel.dart';
+import 'turn.dart';
 
 /// The app's saved settings, kept by Android (AppChannel, its own
 /// SharedPreferences file). Not the shared_preferences plugin: in release
@@ -335,7 +335,7 @@ class UploadStore extends ChangeNotifier {
         if (!await File(path).exists()) {
           await File(path).parent.create(recursive: true);
           if (!await SourcePrefetch.take(s.jpg!, path)) {
-            await _card.importSource(s.jpg!, path, turn: await FaceIndex.instance.turnFor(s.jpg!));
+            await _card.importSource(s.jpg!, path, turn: turnOf(s.jpg!));
           }
         }
         if (existing != null) {

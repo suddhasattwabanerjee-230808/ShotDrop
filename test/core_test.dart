@@ -19,6 +19,7 @@ import 'package:shotdrop/models.dart';
 import 'package:shotdrop/publish.dart';
 import 'package:shotdrop/storage.dart';
 import 'package:shotdrop/stores.dart';
+import 'package:shotdrop/turn.dart';
 import 'package:shotdrop/update.dart';
 
 CardFile f(String path, {int modified = 1000, int size = 10}) => CardFile(
@@ -68,9 +69,17 @@ void main() {
       expect(back.crop, '/x.jpg');
       expect(back.box, f.box);
       expect(back.embedding, f.embedding);
-      final photo = PhotoFaces.fromJson(const PhotoFaces(turn: 3).toJson());
-      expect(photo.turn, 3);
+      final photo = PhotoFaces.fromJson(const PhotoFaces().toJson());
       expect(photo.faces, isEmpty);
+    });
+  });
+
+  group('turnOf', () {
+    CardFile file(String docId) => CardFile(uri: 'content://x/$docId', docId: docId, name: 'A.JPG', size: 1, modified: 1);
+
+    test('card photos turn 90° left; phone photos stay as they are', () {
+      expect(turnOf(file('1A2B-3C4D:DCIM/100D5600/DSC_0001.JPG')), 3);
+      expect(turnOf(file('phone:42')), 0);
     });
   });
 

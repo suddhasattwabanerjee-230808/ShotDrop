@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import 'card_channel.dart';
-import 'faces.dart';
 import 'models.dart';
+import 'turn.dart';
 
 /// Card photos copied off the card ahead of time (the one open in the viewer,
 /// the ones picked in the gallery), so Edit and To Selected don't wait on the
@@ -23,7 +23,7 @@ class SourcePrefetch {
         final dir = await getTemporaryDirectory();
         final path = '${dir.path}/sources/${key.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')}.jpg';
         await File(path).parent.create(recursive: true);
-        await CardChannel.instance.importSource(file, path, turn: await FaceIndex.instance.turnFor(file));
+        await CardChannel.instance.importSource(file, path, turn: turnOf(file));
         return path;
       } catch (_) {
         _jobs.remove(key); // card pulled out: the next ask tries again

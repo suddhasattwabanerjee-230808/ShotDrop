@@ -5,9 +5,11 @@ import '../date_filter.dart';
 import '../faces.dart';
 import '../models.dart';
 import '../prefetch.dart';
+import '../sharing.dart';
 import '../stores.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
+import '../turn.dart';
 import '../widgets.dart';
 import 'date_filter_sheet.dart';
 import 'editor_screen.dart';
@@ -19,8 +21,9 @@ enum Gallery { card, phone }
 
 /// A gallery: every shot on the card (the SD Card Gallery) or every photo on
 /// the phone (the Phone Gallery), newest first, by day. Tap to view,
-/// long-press to pick several, then add them to Selected or edit them
-/// straight into the Upload folder. ♡ marks the ones in Selected.
+/// long-press to pick several, then share them, add them to Selected or edit
+/// them straight into the Upload folder. ♡ marks the ones in Selected. Card
+/// photos are shown turned 90° left (see turnOf).
 class GridScreen extends StatefulWidget {
   const GridScreen({super.key, this.gallery = Gallery.card});
   final Gallery gallery;
@@ -119,6 +122,14 @@ class _GridScreenState extends State<GridScreen> {
       content: Text('This shot is RAW only (no JPEG), so it can\'t be edited here. Shoot RAW+JPEG to edit it.'),
     ),
   );
+
+  Future<void> _share(List<CardShot> shots) async {
+    final picked = [
+      for (final s in shots)
+        if (_selected.contains(s.id)) s,
+    ];
+    if (await shareShots(context, picked) && mounted) _clear();
+  }
 
   Future<void> _editSelected(List<CardShot> shots) async {
     final picked = [
@@ -325,6 +336,12 @@ class _GridScreenState extends State<GridScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                     child: Row(
                       children: [
+                        OutlinedButton.icon(
+                          onPressed: () => _share(shots),
+                          icon: const Icon(Icons.share_rounded),
+                          label: const Text('Share'),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () => _addToSelected(shots),

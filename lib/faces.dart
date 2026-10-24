@@ -10,15 +10,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'app_channel.dart';
 import 'models.dart';
 import 'stores.dart' show ShotSource;
+import 'turn.dart';
 
 /// One face in a photo.
 class Face {
   const Face({required this.crop, required this.box, this.embedding});
 
   final String crop; // a small square JPEG of the face, for the People sheet
-  final Rect box; // 0..1 of the photo, as turned upright
+  final Rect box; // 0..1 of the photo, as looked at (turned as shown, see turnOf)
   final Float32List? embedding; // 192 numbers, unit length; null when too small to tell who it is
 
   double get size => box.width * box.height;
@@ -64,20 +66,17 @@ Uint8List _bytes(Float32List floats) {
   return data.buffer.asUint8List();
 }
 
-/// What a scan found in one photo: how to turn it upright, and its faces.
+/// What a scan found in one photo.
 class PhotoFaces {
-  const PhotoFaces({this.turn = 0, this.faces = const []});
+  const PhotoFaces({this.faces = const []});
 
-  final int turn; // quarter turns clockwise: 3 = left 90°, for a person lying sideways
   final List<Face> faces;
 
   Map<String, Object?> toJson() => {
-    if (turn != 0) 't': turn,
     if (faces.isNotEmpty) 'f': [for (final f in faces) f.toJson()],
   };
 
   factory PhotoFaces.fromJson(Map<String, Object?> j) => PhotoFaces(
-    turn: (j['t'] as num?)?.toInt() ?? 0,
     faces: [for (final f in (j['f'] as List?) ?? const []) Face.fromJson((f as Map).cast<String, Object?>())],
   );
 }
@@ -93,9 +92,10 @@ class Person {
 }
 
 /// The faces in every gallery photo, found on the phone (FaceChannel.kt),
-/// newest photos first, while ShotDrop is open. Kept in faces.json, so each
-/// photo is looked at once. Also says which photos show a person lying
-/// sideways, so the galleries, Selected and the editor turn them upright.
+/// card photos first, newest first, as soon as a gallery lists them: by the
+/// time People is opened they're mostly there. Kept in faces.json, so each
+/// photo is looked at once. Photos it couldn't look at are counted, and the
+/// first reason of each kind is noted in Download (reportError).
 class FaceIndex extends ChangeNotifier {
   FaceIndex._();
   static final instance = FaceIndex._();
@@ -105,28 +105,41 @@ class FaceIndex extends ChangeNotifier {
   /// Same person: how alike (cosine) a face must be to a person's average face.
   static const sameness = 0.6;
 
+  /// faces.json's layout. 2: card photos looked at turned left, as they're now shown.
+  static const _version = 2;
+
+  /// A photo taking longer than this is given up on (for this session), so one can't hold up the rest.
+  static const _scanLimit = Duration(seconds: 45);
+
   final _byKey = <String, PhotoFaces>{};
   final _failed = <String>{}; // tried this session and couldn't be read; tried again when the gallery changes
   final _scanning = <String, Future<void>>{};
   final _sources = <ShotSource>[];
   var _pending = Queue<CardFile>();
-  bool _paused = false, _pumping = false;
+  bool _pumping = false;
   Timer? _kickSoon, _saveSoon, _clusterSoon;
   int _clusterRun = 0;
-
-  /// Bumps when a photo is found to need turning: the tiles listen to this, not every scan.
-  final turns = ValueNotifier<int>(0);
+  int _looked = 0, _found = 0; // this session: photos looked at, faces found in them
+  bool _noted = false;
 
   /// Everyone seen in at least two photos, most photos first.
   List<Person> people = const [];
 
+  /// Why the last photo that couldn't be looked at couldn't be.
+  String? lastError;
+
   static String keyOf(CardFile f) => '${f.docId}|${f.modified}|${f.size}';
 
-  int turnOf(CardFile f) => _byKey[keyOf(f)]?.turn ?? 0;
   bool isScanned(CardFile f) => _byKey.containsKey(keyOf(f)) || _failed.contains(keyOf(f));
+
+  /// Looking at photos right now.
+  bool get busy => _pumping || (_kickSoon?.isActive ?? false);
 
   /// How many of [shots] are still to be looked at.
   int remaining(Iterable<CardShot> shots) => shots.where((s) => s.jpg != null && !isScanned(s.jpg!)).length;
+
+  /// How many of [shots] couldn't be looked at this session.
+  int failed(Iterable<CardShot> shots) => shots.where((s) => s.jpg != null && _failed.contains(keyOf(s.jpg!))).length;
 
   Person? person(String id) => people.where((p) => p.id == id || p.faces.contains(id)).firstOrNull;
 
@@ -137,10 +150,10 @@ class FaceIndex extends ChangeNotifier {
       final f = await _file;
       if (!await f.exists()) return;
       final j = jsonDecode(await f.readAsString()) as Map<String, Object?>;
+      if (j['v'] != _version) return; // looked at the old way: every photo is looked at again
       (j['photos'] as Map).forEach(
         (k, v) => _byKey[k as String] = PhotoFaces.fromJson((v as Map).cast<String, Object?>()),
       );
-      turns.value++;
       _recluster(soon: false);
     } catch (e) {
       debugPrint('Faces unreadable, starting again: $e');
@@ -153,7 +166,7 @@ class FaceIndex extends ChangeNotifier {
       try {
         final f = await _file;
         final tmp = File('${f.path}.part');
-        await tmp.writeAsString(jsonEncode({'v': 1, 'photos': _byKey.map((k, v) => MapEntry(k, v.toJson()))}));
+        await tmp.writeAsString(jsonEncode({'v': _version, 'photos': _byKey.map((k, v) => MapEntry(k, v.toJson()))}));
         await tmp.rename(f.path);
       } catch (e) {
         debugPrint('Couldn\'t save faces: $e');
@@ -168,14 +181,8 @@ class FaceIndex extends ChangeNotifier {
     _kick();
   }
 
-  void pause() => _paused = true;
-
-  void resume() {
-    _paused = false;
-    _kick();
-  }
-
-  // Lists what's still to look at, then starts on it a moment later, out of the way of the thumbnails.
+  // Lists what's still to look at, then starts on it a moment later, out of the way of the
+  // thumbnails. It carries on while ShotDrop is in the background, for as long as Android lets it.
   void _kick() {
     _failed.clear();
     _pending = Queue.of([
@@ -184,57 +191,60 @@ class FaceIndex extends ChangeNotifier {
           if (shot.jpg case final f? when !isScanned(f)) f,
     ]);
     _kickSoon?.cancel();
-    _kickSoon = Timer(const Duration(seconds: 3), _pump);
+    _kickSoon = Timer(const Duration(seconds: 2), _pump);
+    notifyListeners();
   }
 
   Future<void> _pump() async {
     if (_pumping) return;
     _pumping = true;
-    var n = 0;
     try {
-      while (!_paused && _pending.isNotEmpty) {
+      while (_pending.isNotEmpty) {
         final f = _pending.removeFirst();
         if (isScanned(f)) continue;
         await _scan(f);
-        if (++n % 10 == 0) notifyListeners();
+        notifyListeners();
       }
     } finally {
       _pumping = false;
-      if (n > 0) notifyListeners();
+      notifyListeners();
     }
-  }
-
-  /// [file]'s turn, looking at it now (ahead of the rest) if it hasn't been yet.
-  Future<int> turnFor(CardFile file) async {
-    if (!isScanned(file)) {
-      try {
-        await _scan(file).timeout(const Duration(seconds: 10));
-      } catch (_) {
-        // Not upright-checked: it stays as the camera saved it.
-      }
-    }
-    return turnOf(file);
   }
 
   Future<void> _scan(CardFile file) {
     final key = keyOf(file);
     return _scanning[key] ??= () async {
       try {
-        final r = await _m.invokeMapMethod<String, Object?>('scan', {'uri': file.uri, 'key': key});
+        final r = await _m
+            .invokeMapMethod<String, Object?>('scan', {'uri': file.uri, 'key': key, 'turn': turnOf(file)})
+            .timeout(_scanLimit);
         final found = PhotoFaces(
-          turn: (r?['turn'] as num?)?.toInt() ?? 0,
           faces: [for (final f in (r?['faces'] as List?) ?? const []) Face.fromMap(f as Map<Object?, Object?>)],
         );
         _byKey[key] = found;
-        if (found.turn != 0) turns.value++;
+        _looked++;
+        _found += found.faces.length;
+        if (r?['embedError'] case final String why) reportError('Faces: $why', null);
         if (found.faces.any((f) => f.embedding != null)) _recluster();
         _save();
-      } catch (e) {
+        _checkIn();
+      } catch (e, st) {
         _failed.add(key);
+        lastError = e is PlatformException ? (e.message ?? e.code) : '$e';
+        // Once per kind of failure (reportError skips repeats), so the reason can be read off the phone.
+        reportError('Faces: couldn\'t look at a photo: ${e is PlatformException ? '${e.message}\n${e.details}' : e}', st);
       } finally {
         _scanning.remove(key);
       }
     }();
+  }
+
+  // A note in Download if photos are being read but no faces turn up, which
+  // would mean the face finder isn't working rather than nobody's there.
+  void _checkIn() {
+    if (_noted || _looked < 40) return;
+    _noted = true;
+    if (_found == 0) reportError('Faces: looked at $_looked photos and found no faces in any', null);
   }
 
   // Grouping is redone on the side (a few thousand faces is a lot of sums), a little after the last new face.
@@ -351,18 +361,4 @@ List<Person> groupFaces(List<FaceEntry> faces, {double same = FaceIndex.sameness
   ];
   people.sort((a, b) => b.photos.length.compareTo(a.photos.length));
   return people;
-}
-
-/// [child] (a photo of [file]) turned upright when FaceIndex found the person in it lying sideways.
-class Upright extends StatelessWidget {
-  const Upright({super.key, required this.file, required this.child});
-  final CardFile file;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => ValueListenableBuilder(
-    valueListenable: FaceIndex.instance.turns,
-    builder: (context, _, child) => RotatedBox(quarterTurns: FaceIndex.instance.turnOf(file), child: child),
-    child: child,
-  );
 }

@@ -10,10 +10,10 @@ import '../edit/crop.dart';
 import '../edit/filters.dart';
 import '../edit/render.dart';
 import '../edit/shape.dart';
-import '../faces.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
+import '../turn.dart';
 import '../pose_channel.dart';
 import '../prefetch.dart';
 import '../stores.dart';
@@ -134,7 +134,7 @@ class _EditorScreenState extends State<EditorScreen> {
           });
         }
         if (!await SourcePrefetch.take(card, path)) {
-          await CardChannel.instance.importSource(card, path, turn: await FaceIndex.instance.turnFor(card));
+          await CardChannel.instance.importSource(card, path, turn: turnOf(card));
         }
       }
       final image = await _decode(path, maxEdge: _previewEdge);

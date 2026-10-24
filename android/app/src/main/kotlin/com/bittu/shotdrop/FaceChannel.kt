@@ -30,11 +30,11 @@ import kotlin.math.atan2
 import kotlin.math.max
 
 /**
- * The People filter and the auto-turn, on the phone, no network. For each
- * photo: ML Kit finds the faces (and, in a landscape photo with no upright
- * face, whether a person is lying sideways: a face found once the photo is
- * turned), then MobileFaceNet (assets/MobileFaceNet.tflite, MIT) turns each
- * face into 192 numbers that are close for the same person. Dart groups them.
+ * The People filter, on the phone, no network. For each photo: ML Kit finds
+ * the faces in it, turned the way ShotDrop shows it (card photos 90° left;
+ * as saved if nobody's found that way), then MobileFaceNet
+ * (assets/MobileFaceNet.tflite, MIT) turns each face into 192 numbers that
+ * are close for the same person. Dart groups them.
  */
 class FaceChannel(
     private val activity: Activity,
@@ -55,14 +55,16 @@ class FaceChannel(
         )
     }
 
-    // Null if the model won't load: faces are still found (and photos turned), just not grouped.
+    // Why the model won't load or run, if it won't: faces are still found, just not grouped.
+    private var embedError: String? = null
+
     private val embedder: Interpreter? by lazy {
         runCatching {
             val bytes = activity.assets.open(MODEL).use { it.readBytes() }
             val model = ByteBuffer.allocateDirect(bytes.size).order(ByteOrder.nativeOrder()).put(bytes)
             model.rewind()
             Interpreter(model, Interpreter.Options().setNumThreads(2))
-        }.getOrNull()
+        }.onFailure { embedError = "The face model won't load: ${reason(it)}" }.getOrNull()
     }
 
     init {
@@ -78,43 +80,50 @@ class FaceChannel(
         if (call.method != "scan") return result.notImplemented()
         val uri = Uri.parse(call.argument<String>("uri")!!)
         val key = call.argument<String>("key")!!
+        val turn = call.argument<Int>("turn") ?: 0
         worker.execute {
+            // Throwable, not Exception: a missing native library is an Error, and the
+            // call must still be answered or Dart waits on it for ever.
             try {
-                val out = scan(uri, key)
+                val out = scan(uri, key, turn)
                 main.post { result.success(out) }
-            } catch (e: Exception) {
-                main.post { result.error("faces", e.message ?: e.javaClass.simpleName, null) }
+            } catch (e: Throwable) {
+                main.post { result.error("faces", reason(e), e.stackTraceToString().take(2000)) }
             }
         }
     }
 
-    private fun scan(uri: Uri, key: String): Map<String, Any> {
-        var photo = preview(uri, EDGE) ?: throw IllegalStateException("Couldn't read this photo")
+    private fun scan(uri: Uri, key: String, turn: Int): Map<String, Any?> {
+        val saved = software(preview(uri, EDGE) ?: throw IllegalStateException("Couldn't read this photo"))
+        var photo = saved
         try {
-            var turn = 0
+            // Turned the way it's shown first; as saved if nobody's found that way.
+            if (turn % 4 != 0) photo = rotate(saved, turn)
             var faces = detect(photo)
-            // Landscape and nobody upright: is someone lying sideways? Left 90° first, the usual way.
-            if (photo.width > photo.height && faces.isEmpty()) {
-                val base = photo
-                for (q in intArrayOf(3, 1)) {
-                    val turned = rotate(base, q)
-                    val found = detect(turned)
-                    if (score(found) > score(faces)) {
-                        if (photo !== base) photo.recycle()
-                        photo = turned
-                        faces = found
-                        turn = q
-                    } else {
-                        turned.recycle()
-                    }
+            if (faces.isEmpty() && photo !== saved) {
+                val found = detect(saved)
+                if (found.isNotEmpty()) {
+                    photo.recycle()
+                    photo = saved
+                    faces = found
                 }
-                if (photo !== base) base.recycle()
             }
-            return mapOf("turn" to turn, "faces" to describe(photo, faces.take(MAX_FACES), key))
+            return mapOf("faces" to describe(photo, faces.take(MAX_FACES), key), "embedError" to embedError)
         } finally {
             photo.recycle()
+            if (saved !== photo) saved.recycle()
         }
     }
+
+    /** ML Kit and Canvas need pixels in memory, in 8888: a thumbnail from Android may be neither. */
+    private fun software(bitmap: Bitmap): Bitmap {
+        if (bitmap.config == Bitmap.Config.ARGB_8888) return bitmap
+        val copy = bitmap.copy(Bitmap.Config.ARGB_8888, false) ?: throw IllegalStateException("Couldn't read this photo's pixels")
+        bitmap.recycle()
+        return copy
+    }
+
+    private fun reason(e: Throwable): String = "${e.javaClass.simpleName}: ${e.message ?: ""}".trimEnd(' ', ':')
 
     /** Faces with both eyes showing, biggest first. */
     private fun detect(bitmap: Bitmap): List<Face> {
@@ -124,8 +133,6 @@ class FaceChannel(
             .sortedByDescending { it.boundingBox.width() * it.boundingBox.height() }
     }
 
-    private fun score(faces: List<Face>): Int = faces.sumOf { it.boundingBox.width() * it.boundingBox.height() }
-
     private fun rotate(bitmap: Bitmap, q: Int): Bitmap =
         Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, Matrix().apply { postRotate(90f * q) }, true)
 
@@ -134,7 +141,10 @@ class FaceChannel(
         val dir = File(activity.filesDir, "faces").apply { mkdirs() }
         val stem = sha1(key)
         val big = faces.filter { minOf(it.boundingBox.width(), it.boundingBox.height()) >= MIN_EMBED_PX }
-        val embeddings = embed(photo, big)
+        // The faces are worth keeping even if the model fails: Dart notes why.
+        val embeddings = runCatching { embed(photo, big) }
+            .onFailure { embedError = "The face model won't run: ${reason(it)}" }
+            .getOrDefault(emptyMap())
         return faces.mapIndexed { i, face ->
             val box = face.boundingBox
             val crop = File(dir, "$stem-$i.jpg")

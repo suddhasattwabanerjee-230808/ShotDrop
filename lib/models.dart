@@ -27,6 +27,9 @@ class CardFile {
     modified: (m['modified'] as num?)?.toInt() ?? 0,
   );
 
+  /// From the phone's own gallery (PhoneStore), not the card.
+  bool get onPhone => docId.startsWith('phone:');
+
   String get extension {
     final dot = name.lastIndexOf('.');
     return dot < 0 ? '' : name.substring(dot + 1).toUpperCase();

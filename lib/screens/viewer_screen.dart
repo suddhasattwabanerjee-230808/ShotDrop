@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../faces.dart';
 import '../models.dart';
 import '../prefetch.dart';
+import '../sharing.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
+import '../turn.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
 
@@ -18,8 +19,8 @@ Future<void> openViewer(BuildContext context, List<CardShot> shots, int index) =
   ),
 );
 
-/// Full-screen photos from the card: swipe through them, pinch to zoom, and
-/// send the one on screen to the editor. After editing it comes back here, on
+/// Full-screen photos from the card: swipe through them, pinch to zoom,
+/// share the one on screen, or send it to the editor. After editing it comes back here, on
 /// the same photo, ready for a swipe to the next one.
 class ViewerScreen extends StatefulWidget {
   const ViewerScreen({super.key, required this.shots, required this.initialIndex});
@@ -230,16 +231,28 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: _shot.editable
-                                    ? FilledButton.icon(
-                                        onPressed: _edit,
-                                        icon: Icon(queued ? Icons.tune_rounded : Icons.auto_fix_high_rounded),
-                                        label: Text(queued ? 'Edit Again' : 'Edit Before Upload'),
-                                      )
-                                    : const OutlinedButton(onPressed: null, child: Text('RAW Only: Can\'t Be Edited')),
-                              ),
+                              _shot.editable
+                                  ? Row(
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed: () => shareShots(context, [_shot]),
+                                          icon: const Icon(Icons.share_rounded),
+                                          label: const Text('Share'),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: FilledButton.icon(
+                                            onPressed: _edit,
+                                            icon: Icon(queued ? Icons.tune_rounded : Icons.auto_fix_high_rounded),
+                                            label: Text(queued ? 'Edit Again' : 'Edit Before Upload'),
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : const SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton(onPressed: null, child: Text('RAW Only: Can\'t Be Edited')),
+                                    ),
                             ],
                           );
                         },
