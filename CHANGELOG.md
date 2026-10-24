@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1] - 2026-10-24 (build 18)
+
+Sharing, background face finding, and a consistent turn for card photos.
+
+- **Face finding starts in the background** as soon as the SD card gallery is listed, so People is ready sooner. Photos it could not scan are reported in Download.
+- **Share photos from the galleries, Selected and the viewer** with Android's own share sheet, including multiple selected photos.
+- **SD card photos are shown turned 90° left** throughout the galleries, viewer, Selected, editor and sharing. Phone gallery photos are unchanged.
+
 ## [0.8.0] - 2026-10-24 (build 17)
 
 People, sharing, and sideways photos turned upright.
