@@ -19,7 +19,7 @@ import 'turn.dart';
 Future<bool> shareShots(BuildContext context, List<CardShot> shots) async {
   final files = [
     for (final s in shots)
-      if (s.jpg case final f?) f,
+      ?s.jpg,
   ];
   if (files.isEmpty) return false;
   final messenger = ScaffoldMessenger.of(context);
