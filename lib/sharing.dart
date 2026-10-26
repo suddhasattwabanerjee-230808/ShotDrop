@@ -105,5 +105,6 @@ Future<int> saveShotsToGallery(BuildContext context, List<CardShot> shots) async
     final name = file.name.contains('.') ? file.name.substring(0, file.name.lastIndexOf('.')) : file.name;
     names.add(name);
   }
+  if (!context.mounted) return 0;
   return savePathsToGallery(context, paths, names);
 }
