@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../edit/filters.dart';
 import '../models.dart';
+import '../publish.dart';
+import '../sharing.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
 import '../widgets.dart';
@@ -28,6 +30,7 @@ class _UploadScreenState extends State<UploadScreen> {
   late final _caption = TextEditingController(text: _uploads.caption);
   Timer? _saveCaption;
   final _skipped = <String>{}; // shotIds unticked: they stay here for later
+  bool _storiesSection = false;
 
   List<UploadItem> get _picked => [
     for (final i in _uploads.queued)
@@ -83,6 +86,12 @@ class _UploadScreenState extends State<UploadScreen> {
     await openEditor(context, [EditTarget.fromItem(item, card: jpg)]);
   }
 
+  Future<void> _saveGallery(List<UploadItem> items) => savePathsToGallery(
+    context,
+    [for (final i in items) i.previewPath],
+    [for (final i in items) '${i.name}_edit'],
+  ).then((_) {});
+
   @override
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
@@ -92,22 +101,35 @@ class _UploadScreenState extends State<UploadScreen> {
       body: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
-          final items = uploads.queued;
+          final items = _storiesSection ? uploads.storyLater : uploads.queued;
           if (items.isEmpty) {
             return Padding(
               padding: const EdgeInsets.only(bottom: navBarClearance),
               child: StatePanel(
-                icon: Icons.outbox_rounded,
-                title: 'Nothing To Post Yet',
-                body:
-                    'Edit a photo from the Gallery or from Selected and it lands here, ready for Instagram. '
-                    'Swipe one away to set it aside in Selected.',
+                icon: _storiesSection ? Icons.amp_stories_rounded : Icons.outbox_rounded,
+                title: _storiesSection ? 'No Stories Saved For Later' : 'Nothing To Post Yet',
+                body: _storiesSection
+                    ? 'Stories you choose to keep after posting appear here. Move one to Posts when you are ready.'
+                    : 'Edit a photo from the Gallery or from Selected and it lands here, ready for Instagram. Swipe one away to set it aside in Selected.',
                 actions: [
+                  if (!_storiesSection)
                   OutlinedButton.icon(
                     onPressed: () => HomeShell.go(context, HomeTab.selected),
                     icon: const Icon(Icons.favorite_border_rounded),
                     label: const Text('Open Selected'),
                   ),
+                  if (_storiesSection && uploads.queued.isNotEmpty)
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => _storiesSection = false),
+                      icon: const Icon(Icons.grid_on_rounded),
+                      label: const Text('Open Posts'),
+                    ),
+                  if (!_storiesSection && uploads.storyLater.isNotEmpty)
+                    OutlinedButton.icon(
+                      onPressed: () => setState(() => _storiesSection = true),
+                      icon: const Icon(Icons.amp_stories_rounded),
+                      label: const Text('Open Stories'),
+                    ),
                 ],
               ),
             );
@@ -119,19 +141,31 @@ class _UploadScreenState extends State<UploadScreen> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 4, 0),
                 sliver: SliverToBoxAdapter(
-                  child: Row(
+                  child: Column(
+                    children: [
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(value: false, label: Text('Posts'), icon: Icon(Icons.grid_on_rounded)),
+                          ButtonSegment(value: true, label: Text('Stories'), icon: Icon(Icons.amp_stories_rounded)),
+                        ],
+                        selected: {_storiesSection},
+                        onSelectionChanged: (s) => setState(() { _storiesSection = s.single; _skipped.clear(); }),
+                      ),
+                      Row(
                     children: [
                       Expanded(
                         child: Text(
-                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'} · $picked SELECTED',
+                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'}${_storiesSection ? ' · STORIES' : ' · $picked SELECTED'}',
                           style: sectionLabel,
                         ),
                       ),
-                      TextButton(
+                      if (!_storiesSection) TextButton(
                         onPressed: () => setState(() {
                           all ? _skipped.addAll(items.map((i) => i.shotId)) : _skipped.clear();
                         }),
                         child: Text(all ? 'Deselect All' : 'Select All'),
+                      ),
+                    ],
                       ),
                     ],
                   ),
@@ -170,12 +204,15 @@ class _UploadScreenState extends State<UploadScreen> {
                           if (!_skipped.remove(item.shotId)) _skipped.add(item.shotId);
                         }),
                         onEdit: () => _reEdit(item),
+                        onSaveGallery: () => _saveGallery([item]),
+                        storyLater: _storiesSection,
+                        onMoveToPosts: () => uploads.move([item.shotId], ItemStatus.queued),
                       ),
                     );
                   },
                 ),
               ),
-              SliverPadding(
+              if (!_storiesSection) SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 sliver: SliverToBoxAdapter(
                   child: Column(
@@ -207,8 +244,9 @@ class _UploadScreenState extends State<UploadScreen> {
       bottomNavigationBar: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
-          if (uploads.queued.isEmpty) return const SizedBox.shrink();
-          final picked = _picked, n = picked.length, left = uploads.queued.length - n;
+          final active = _storiesSection ? uploads.storyLater : uploads.queued;
+          if (active.isEmpty) return const SizedBox.shrink();
+          final picked = _picked, n = _storiesSection ? uploads.storyLater.length : picked.length, left = uploads.queued.length - n;
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -216,7 +254,7 @@ class _UploadScreenState extends State<UploadScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (left > 0 && n > 0)
+                  if (!_storiesSection && left > 0 && n > 0)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
@@ -226,15 +264,21 @@ class _UploadScreenState extends State<UploadScreen> {
                       ),
                     ),
                   FilledButton.icon(
-                    onPressed: n == 0
-                        ? null
-                        : () async {
+                    onPressed: n == 0 ? null : () async {
+                            if (_storiesSection) {
+                              final later = [...uploads.storyLater];
+                              await uploads.move(later.map((i) => i.shotId), ItemStatus.queued);
+                              if (!context.mounted) return;
+                              setState(() => _storiesSection = false);
+                              await showPublishSheet(context, later, initialMode: PublishMode.post);
+                              return;
+                            }
                             _saveCaption?.cancel();
                             await uploads.setCaption(_caption.text);
                             if (context.mounted) await showPublishSheet(context, picked);
                           },
-                    icon: const Icon(Icons.send_rounded),
-                    label: Text(n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
+                    icon: Icon(_storiesSection ? Icons.grid_on_rounded : Icons.send_rounded),
+                    label: Text(_storiesSection ? 'Post As Posts' : n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
                   ),
                 ],
               ),
@@ -253,11 +297,16 @@ class _UploadRow extends StatelessWidget {
     required this.picked,
     required this.onPick,
     required this.onEdit,
+    required this.onSaveGallery,
+    required this.storyLater,
+    required this.onMoveToPosts,
   });
   final int index;
   final UploadItem item;
   final bool picked; // ticked for publishing
   final VoidCallback onPick, onEdit;
+  final VoidCallback onSaveGallery, onMoveToPosts;
+  final bool storyLater;
 
   String get _summary {
     final p = item.params;
@@ -272,6 +321,8 @@ class _UploadRow extends StatelessWidget {
       if (p.hips > 0) 'Fuller Hips',
       if (p.legs > 0) 'Slimmer Legs',
       if (p.brightness != 0 || p.contrast != 0 || p.saturation != 0 || p.warmth != 0) 'Adjusted',
+      if (p.blurAreas.isNotEmpty) 'Blurred',
+      if (p.retouchPatches.isNotEmpty) 'Objects Removed',
     ];
     return parts.isEmpty ? 'No Changes' : parts.join(' · ');
   }
@@ -289,7 +340,7 @@ class _UploadRow extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           child: Row(
             children: [
-              IconButton(
+              if (!storyLater) IconButton(
                 tooltip: picked ? 'Leave For Later' : 'Publish This One',
                 onPressed: onPick,
                 icon: AnimatedSwitcher(
@@ -340,8 +391,16 @@ class _UploadRow extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(tooltip: 'Edit Again', onPressed: onEdit, icon: Icon(Icons.edit_rounded, color: ink)),
-              ReorderableDragStartListener(
+              if (storyLater)
+                ...[
+                  IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink)),
+                  IconButton(tooltip: 'Move To Posts', onPressed: onMoveToPosts, icon: Icon(Icons.grid_on_rounded, color: accent)),
+                ]
+              else ...[
+                IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink)),
+                IconButton(tooltip: 'Edit Again', onPressed: onEdit, icon: Icon(Icons.edit_rounded, color: ink)),
+              ],
+              if (!storyLater) ReorderableDragStartListener(
                 index: index,
                 child: Padding(
                   padding: const EdgeInsets.all(10),

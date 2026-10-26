@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../share_channel.dart';
+import '../sharing.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
 import '../widgets.dart';
@@ -129,6 +130,15 @@ class _SelectedScreenState extends State<SelectedScreen> {
                       TextButton(
                         onPressed: () => setState(() => _picked.addAll(items.map((i) => i.shotId))),
                         child: const Text('All'),
+                      ),
+                      IconButton(
+                        tooltip: 'Save To Gallery',
+                        onPressed: () => savePathsToGallery(
+                          context,
+                          [for (final i in picked) i.previewPath],
+                          [for (final i in picked) '${i.name}_edit'],
+                        ),
+                        icon: const Icon(Icons.download_rounded),
                       ),
                       IconButton(
                         tooltip: 'Remove From Selected',

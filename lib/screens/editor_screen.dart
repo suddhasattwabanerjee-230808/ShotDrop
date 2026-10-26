@@ -51,7 +51,7 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-enum _Tool { crop, body, adjust }
+enum _Tool { crop, body, adjust, blur, remove }
 
 class _EditorScreenState extends State<EditorScreen> {
   int _index = 0;
@@ -488,6 +488,18 @@ class _EditorScreenState extends State<EditorScreen> {
               onSlimDraft: (s) => setState(() => _slimDraft = s),
               mask: _mask,
             )
+          : _tool == _Tool.blur
+          ? _BlurStage(
+              image: cropped,
+              areas: _p.blurAreas,
+              onAdd: (r) => _commit(_p.copyWith(blurAreas: [..._p.blurAreas, r])),
+            )
+          : _tool == _Tool.remove
+          ? _RemoveStage(
+              image: cropped,
+              patches: _p.retouchPatches,
+              onAdd: (patch) => _commit(_p.copyWith(retouchPatches: [..._p.retouchPatches, patch])),
+            )
           : LayoutBuilder(
               builder: (context, box) {
                 final size = Size(cropped.width.toDouble(), cropped.height.toDouble());
@@ -514,6 +526,11 @@ class _EditorScreenState extends State<EditorScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(tooltip: 'Undo', onPressed: _h > 0 ? _undo : null, icon: const Icon(Icons.undo_rounded)),
+                  IconButton(
+                    tooltip: 'Revert To Original',
+                    onPressed: _status == null && _h > 0 ? () => _commit(const EditParams()) : null,
+                    icon: const Icon(Icons.restart_alt_rounded),
+                  ),
                   IconButton(
                     tooltip: 'Redo',
                     onPressed: _h < _history.length - 1 ? _redo : null,
@@ -625,6 +642,30 @@ class _EditorScreenState extends State<EditorScreen> {
                   onCommit: _commit,
                 ),
                 _Tool.adjust => _AdjustTools(params: _p, thumb: _cropped, onLive: _live, onCommit: _commit),
+                _Tool.blur => Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('Drag over a number plate, face, or any area to blur it.', style: TextStyle(fontWeight: FontWeight.w600))),
+                      TextButton(
+                        onPressed: _p.blurAreas.isEmpty ? null : () => _commit(_p.copyWith(blurAreas: const [])),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                ),
+                _Tool.remove => Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+                  child: Row(
+                    children: [
+                      const Expanded(child: Text('Drag over the unwanted object, then drag over a clean area to copy.', style: TextStyle(fontWeight: FontWeight.w600))),
+                      TextButton(
+                        onPressed: _p.retouchPatches.isEmpty ? null : () => _commit(_p.copyWith(retouchPatches: const [])),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                ),
               },
             ),
           ),
@@ -635,6 +676,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   (_Tool.crop, Icons.crop_rotate_rounded, 'Crop'),
                   (_Tool.body, Icons.accessibility_new_rounded, 'Body'),
                   (_Tool.adjust, Icons.tune_rounded, 'Adjust'),
+                  (_Tool.blur, Icons.blur_on_rounded, 'Blur'),
+                  (_Tool.remove, Icons.auto_fix_off_rounded, 'Remove'),
                 ])
                   Expanded(
                     child: InkWell(
@@ -795,11 +838,188 @@ class _FinishPainter extends CustomPainter {
     canvas.save();
     canvas.translate(rect.left, rect.top);
     paintFinish(canvas, image, rect.size, params);
+    final imageSize = Size(image.width.toDouble(), image.height.toDouble());
+    for (final patch in params.retouchPatches) {
+      final source = Rect.fromLTRB(patch.source.left * imageSize.width, patch.source.top * imageSize.height, patch.source.right * imageSize.width, patch.source.bottom * imageSize.height);
+      final target = Rect.fromLTRB(patch.target.left * rect.width, patch.target.top * rect.height, patch.target.right * rect.width, patch.target.bottom * rect.height);
+      canvas.drawImageRect(image, source, target, Paint()..filterQuality = FilterQuality.high);
+    }
+    for (final normalized in params.blurAreas) {
+      final area = Rect.fromLTRB(
+        normalized.left * rect.width,
+        normalized.top * rect.height,
+        normalized.right * rect.width,
+        normalized.bottom * rect.height,
+      );
+      canvas.save();
+      canvas.clipRect(area);
+      canvas.saveLayer(area.inflate(28), Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12));
+      canvas.drawImageRect(image, Offset.zero & Size(image.width.toDouble(), image.height.toDouble()), Offset.zero & rect.size, Paint()..filterQuality = FilterQuality.high);
+      canvas.restore();
+      canvas.restore();
+    }
     canvas.restore();
   }
 
   @override
   bool shouldRepaint(_FinishPainter old) => old.image != image || old.params != params || old.rect != rect;
+}
+
+class _BlurStage extends StatefulWidget {
+  const _BlurStage({required this.image, required this.areas, required this.onAdd});
+  final ui.Image image;
+  final List<Rect> areas;
+  final ValueChanged<Rect> onAdd;
+
+  @override
+  State<_BlurStage> createState() => _BlurStageState();
+}
+
+class _BlurStageState extends State<_BlurStage> {
+  Rect? _fit, _draft;
+
+  Offset _normalized(Offset p) {
+    final r = _fit!;
+    return Offset(((p.dx - r.left) / r.width).clamp(0.0, 1.0), ((p.dy - r.top) / r.height).clamp(0.0, 1.0));
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final imageSize = Size(widget.image.width.toDouble(), widget.image.height.toDouble());
+      _fit = fitRect(imageSize, box.biggest, pad: 28, top: 56);
+      return GestureDetector(
+        onPanStart: (d) => setState(() => _draft = Rect.fromPoints(d.localPosition, d.localPosition)),
+        onPanUpdate: (d) => setState(() => _draft = Rect.fromPoints(_draft!.topLeft, d.localPosition)),
+        onPanEnd: (_) {
+          final draft = _draft;
+          if (draft != null && draft.width > 10 && draft.height > 10) {
+            final a = _normalized(draft.topLeft), b = _normalized(draft.bottomRight);
+            widget.onAdd(Rect.fromPoints(a, b));
+          }
+          setState(() => _draft = null);
+        },
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _BlurSelectPainter(widget.image, _fit!, widget.areas, _draft),
+        ),
+      );
+    },
+  );
+}
+
+class _BlurSelectPainter extends CustomPainter {
+  _BlurSelectPainter(this.image, this.photo, this.areas, this.draft);
+  final ui.Image image;
+  final Rect photo;
+  final List<Rect> areas;
+  final Rect? draft;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawImageRect(image, Offset.zero & Size(image.width.toDouble(), image.height.toDouble()), photo, Paint()..filterQuality = FilterQuality.high);
+    final line = Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2;
+    final shade = Paint()..color = Colors.black.withValues(alpha: 0.18);
+    for (final r in areas) {
+      final rect = Rect.fromLTRB(photo.left + r.left * photo.width, photo.top + r.top * photo.height, photo.left + r.right * photo.width, photo.top + r.bottom * photo.height);
+      canvas.drawRect(rect, shade);
+      canvas.drawRect(rect, line);
+    }
+    if (draft != null) {
+      canvas.drawRect(draft!, Paint()..color = accent.withValues(alpha: 0.2));
+      canvas.drawRect(draft!, Paint()..color = accent..style = PaintingStyle.stroke..strokeWidth = 2);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BlurSelectPainter old) => old.image != image || old.photo != photo || old.areas != areas || old.draft != draft;
+}
+
+class _RemoveStage extends StatefulWidget {
+  const _RemoveStage({required this.image, required this.patches, required this.onAdd});
+  final ui.Image image;
+  final List<RetouchPatch> patches;
+  final ValueChanged<RetouchPatch> onAdd;
+
+  @override
+  State<_RemoveStage> createState() => _RemoveStageState();
+}
+
+class _RemoveStageState extends State<_RemoveStage> {
+  Rect? _photo, _gesture, _target;
+  bool _pickingSource = false;
+
+  Rect _normalized(Rect r) {
+    final photo = _photo!;
+    return Rect.fromLTRB(
+      ((r.left - photo.left) / photo.width).clamp(0.0, 1.0),
+      ((r.top - photo.top) / photo.height).clamp(0.0, 1.0),
+      ((r.right - photo.left) / photo.width).clamp(0.0, 1.0),
+      ((r.bottom - photo.top) / photo.height).clamp(0.0, 1.0),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      _photo = fitRect(Size(widget.image.width.toDouble(), widget.image.height.toDouble()), box.biggest, pad: 28, top: 56);
+      return GestureDetector(
+        onPanStart: (d) => setState(() => _gesture = Rect.fromPoints(d.localPosition, d.localPosition)),
+        onPanUpdate: (d) => setState(() => _gesture = Rect.fromPoints(_gesture!.topLeft, d.localPosition)),
+        onPanEnd: (_) {
+          final gesture = _gesture;
+          if (gesture != null && gesture.width > 10 && gesture.height > 10) {
+            if (!_pickingSource) {
+              setState(() { _target = _normalized(gesture); _pickingSource = true; });
+            } else {
+              final source = _normalized(gesture);
+              widget.onAdd(RetouchPatch(target: _target!, source: source));
+              setState(() { _target = null; _pickingSource = false; });
+            }
+          }
+          setState(() => _gesture = null);
+        },
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: _RemoveSelectPainter(widget.image, _photo!, widget.patches, _target, _gesture, _pickingSource),
+        ),
+      );
+    },
+  );
+}
+
+class _RemoveSelectPainter extends CustomPainter {
+  _RemoveSelectPainter(this.image, this.photo, this.patches, this.target, this.gesture, this.pickingSource);
+  final ui.Image image;
+  final Rect photo;
+  final List<RetouchPatch> patches;
+  final Rect? target, gesture;
+  final bool pickingSource;
+
+  Rect onPhoto(Rect r) => Rect.fromLTRB(photo.left + r.left * photo.width, photo.top + r.top * photo.height, photo.left + r.right * photo.width, photo.top + r.bottom * photo.height);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final full = Offset.zero & Size(image.width.toDouble(), image.height.toDouble());
+    canvas.drawImageRect(image, full, photo, Paint()..filterQuality = FilterQuality.high);
+    for (final p in patches) {
+      final src = onPhoto(p.source), dst = onPhoto(p.target);
+      canvas.drawImageRect(image, src, dst, Paint()..filterQuality = FilterQuality.high);
+      canvas.drawRect(dst, Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2);
+    }
+    if (target != null) {
+      final r = onPhoto(target!);
+      canvas.drawRect(r, Paint()..color = Colors.orange.withValues(alpha: 0.18));
+      canvas.drawRect(r, Paint()..color = Colors.orange..style = PaintingStyle.stroke..strokeWidth = 2);
+    }
+    if (gesture != null) {
+      canvas.drawRect(gesture!, Paint()..color = (pickingSource ? accent : Colors.orange).withValues(alpha: 0.18));
+      canvas.drawRect(gesture!, Paint()..color = (pickingSource ? accent : Colors.orange)..style = PaintingStyle.stroke..strokeWidth = 2);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RemoveSelectPainter old) => old.image != image || old.photo != photo || old.patches != patches || old.target != target || old.gesture != gesture || old.pickingSource != pickingSource;
 }
 
 // --- Stages (the big preview, with its gestures) -------------------------------------

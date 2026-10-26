@@ -99,6 +99,27 @@ enum AspectPreset {
   final double? ratio; // width / height; null = not fixed (original uses the photo's own)
 }
 
+class RetouchPatch {
+  const RetouchPatch({required this.target, required this.source});
+  final Rect target;
+  final Rect source;
+
+  Map<String, Object?> toJson() => {
+    'target': [target.left, target.top, target.right, target.bottom],
+    'source': [source.left, source.top, source.right, source.bottom],
+  };
+
+  static RetouchPatch? fromJson(Object? value) {
+    if (value is! Map) return null;
+    Rect? rect(Object? v) {
+      if (v is! List || v.length != 4) return null;
+      return Rect.fromLTRB((v[0] as num).toDouble(), (v[1] as num).toDouble(), (v[2] as num).toDouble(), (v[3] as num).toDouble());
+    }
+    final target = rect(value['target']), source = rect(value['source']);
+    return target == null || source == null ? null : RetouchPatch(target: target, source: source);
+  }
+}
+
 /// Everything the editor changed, kept so a photo can be re-edited from the
 /// untouched source rather than from its own export.
 class EditParams {
@@ -119,6 +140,8 @@ class EditParams {
     this.contrast = 0,
     this.saturation = 0,
     this.warmth = 0,
+    this.blurAreas = const [],
+    this.retouchPatches = const [],
   });
 
   final int quarterTurns; // 0..3, clockwise
@@ -145,6 +168,8 @@ class EditParams {
 
   final String filter; // a FilterPreset id
   final double brightness, contrast, saturation, warmth; // each -1..1
+  final List<Rect> blurAreas; // normalized rectangles in the cropped image
+  final List<RetouchPatch> retouchPatches;
 
   bool get isOriented => quarterTurns.isOdd;
 
@@ -165,6 +190,8 @@ class EditParams {
     double? contrast,
     double? saturation,
     double? warmth,
+    List<Rect>? blurAreas,
+    List<RetouchPatch>? retouchPatches,
   }) => EditParams(
     quarterTurns: quarterTurns ?? this.quarterTurns,
     flipH: flipH ?? this.flipH,
@@ -182,6 +209,8 @@ class EditParams {
     contrast: contrast ?? this.contrast,
     saturation: saturation ?? this.saturation,
     warmth: warmth ?? this.warmth,
+    blurAreas: blurAreas ?? this.blurAreas,
+    retouchPatches: retouchPatches ?? this.retouchPatches,
   );
 
   Map<String, Object?> toJson() => {
@@ -201,6 +230,8 @@ class EditParams {
     'contrast': contrast,
     'saturation': saturation,
     'warmth': warmth,
+    if (blurAreas.isNotEmpty) 'blurAreas': [for (final r in blurAreas) [r.left, r.top, r.right, r.bottom]],
+    if (retouchPatches.isNotEmpty) 'retouchPatches': [for (final p in retouchPatches) p.toJson()],
   };
 
   factory EditParams.fromJson(Map<String, Object?> j) {
@@ -232,6 +263,11 @@ class EditParams {
       contrast: d('contrast'),
       saturation: d('saturation'),
       warmth: d('warmth'),
+      blurAreas: [
+        for (final r in (j['blurAreas'] as List? ?? const []))
+          if (r is List && r.length == 4) Rect.fromLTRB((r[0] as num).toDouble(), (r[1] as num).toDouble(), (r[2] as num).toDouble(), (r[3] as num).toDouble()),
+      ],
+      retouchPatches: [for (final p in (j['retouchPatches'] as List? ?? const [])) ?RetouchPatch.fromJson(p)],
     );
   }
 }
@@ -240,7 +276,7 @@ class EditParams {
 /// Where a photo kept by ShotDrop is: in Selected (picked from the card,
 /// or set aside from the Upload folder for later), in the Upload folder
 /// (edited, going out next), or posted.
-enum ItemStatus { selected, queued, published }
+enum ItemStatus { selected, queued, storyLater, published }
 
 /// A photo ShotDrop keeps: its own copy of the card JPEG, and once edited,
 /// the edit and the export that gets posted.

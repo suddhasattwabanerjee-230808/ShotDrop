@@ -105,7 +105,53 @@ Future<ui.Image> renderFinal(ui.Image src, EditParams p, {int maxEdge = 2160}) a
   paintFinish(Canvas(recorder), cropped, out, p);
   final image = await recorder.endRecording().toImage(cropped.width, cropped.height);
   cropped.dispose();
-  return image;
+  var result = image;
+  if (p.retouchPatches.isNotEmpty) {
+    result = await _applyRetouchPatches(result, p.retouchPatches);
+    image.dispose();
+  }
+  if (p.blurAreas.isEmpty) return result;
+  final blurred = await _blurRegions(result, p.blurAreas);
+  result.dispose();
+  return blurred;
+}
+
+Future<ui.Image> _applyRetouchPatches(ui.Image image, List<RetouchPatch> patches) async {
+  final size = Size(image.width.toDouble(), image.height.toDouble());
+  final full = Offset.zero & size;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..drawImage(image, Offset.zero, Paint()..filterQuality = FilterQuality.high);
+  for (final patch in patches) {
+    final target = Rect.fromLTRB(patch.target.left * size.width, patch.target.top * size.height, patch.target.right * size.width, patch.target.bottom * size.height).intersect(full);
+    final source = Rect.fromLTRB(patch.source.left * size.width, patch.source.top * size.height, patch.source.right * size.width, patch.source.bottom * size.height).intersect(full);
+    if (target.width < 2 || target.height < 2 || source.width < 2 || source.height < 2) continue;
+    canvas.drawImageRect(image, source, target, Paint()..filterQuality = FilterQuality.high);
+  }
+  return recorder.endRecording().toImage(image.width, image.height);
+}
+
+Future<ui.Image> _blurRegions(ui.Image image, List<Rect> areas) async {
+  final size = Size(image.width.toDouble(), image.height.toDouble());
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  final full = Offset.zero & size;
+  canvas.drawImage(image, Offset.zero, Paint()..filterQuality = FilterQuality.high);
+  for (final normalized in areas) {
+    final area = Rect.fromLTRB(
+      normalized.left * size.width,
+      normalized.top * size.height,
+      normalized.right * size.width,
+      normalized.bottom * size.height,
+    ).intersect(full);
+    if (area.width < 2 || area.height < 2) continue;
+    canvas.save();
+    canvas.clipRect(area);
+    canvas.saveLayer(area.inflate(28), Paint()..imageFilter = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12));
+    canvas.drawImage(image, Offset.zero, Paint()..filterQuality = FilterQuality.high);
+    canvas.restore();
+    canvas.restore();
+  }
+  return recorder.endRecording().toImage(image.width, image.height);
 }
 
 /// A centred crop rect of [ratio] (width / height) in a photo of [o], as large as fits.

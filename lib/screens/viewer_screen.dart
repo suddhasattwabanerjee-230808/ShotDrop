@@ -239,7 +239,13 @@ class _ViewerScreenState extends State<ViewerScreen> {
                                           icon: const Icon(Icons.share_rounded),
                                           label: const Text('Share'),
                                         ),
-                                        const SizedBox(width: 10),
+                                        const SizedBox(width: 6),
+                                        IconButton.filledTonal(
+                                          tooltip: 'Save To Gallery',
+                                          onPressed: () => saveShotsToGallery(context, [_shot]),
+                                          icon: const Icon(Icons.download_rounded),
+                                        ),
+                                        const SizedBox(width: 6),
                                         Expanded(
                                           child: FilledButton.icon(
                                             onPressed: _edit,

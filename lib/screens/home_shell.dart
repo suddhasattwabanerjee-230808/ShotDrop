@@ -225,7 +225,7 @@ class _NavBar extends StatelessWidget {
                           activeIcon: Icons.outbox_rounded,
                           label: 'Upload',
                           color: grass,
-                          count: scope.uploads.queued.length,
+                          count: scope.uploads.queued.length + scope.uploads.storyLater.length,
                           selected: tab == HomeTab.upload,
                           onTap: () => onTap(HomeTab.upload),
                         ),

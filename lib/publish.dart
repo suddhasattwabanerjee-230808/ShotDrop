@@ -58,13 +58,14 @@ enum StepStatus { pending, done, later }
 /// survives ShotDrop being closed while Instagram is open: which steps went
 /// out, which one is next, and how photos are reshaped for posts.
 class PublishSession {
-  PublishSession({required this.mode, required this.steps, required this.fit, List<StepStatus>? status, this.current = 0})
+  PublishSession({required this.mode, required this.steps, required this.fit, this.keepStoriesForPosts = false, List<StepStatus>? status, this.current = 0})
     : status = status ?? [for (final _ in steps) StepStatus.pending];
 
   final PublishMode mode;
   final List<PublishStep> steps;
   final List<StepStatus> status;
   final PostFit fit;
+  final bool keepStoriesForPosts;
   int current; // the step out in Instagram (or next to go)
 
   bool get finished => current >= steps.length;
@@ -110,6 +111,7 @@ class PublishSession {
   Map<String, Object?> toJson() => {
     'mode': mode.name,
     'fit': fit.name,
+    'keepStoriesForPosts': keepStoriesForPosts,
     'current': current,
     'steps': [
       for (final (i, s) in steps.indexed)
@@ -143,6 +145,7 @@ class PublishSession {
       steps: steps,
       status: status,
       fit: PostFit.values.asNameMap()[j['fit']] ?? PostFit.crop,
+      keepStoriesForPosts: j['keepStoriesForPosts'] == true,
       current: current.clamp(0, steps.length),
     );
   }

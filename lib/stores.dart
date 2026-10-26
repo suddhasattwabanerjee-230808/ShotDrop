@@ -273,6 +273,7 @@ class UploadStore extends ChangeNotifier {
       if (i.status == s) i,
   ];
   List<UploadItem> get queued => _with(ItemStatus.queued);
+  List<UploadItem> get storyLater => _with(ItemStatus.storyLater);
 
   /// Selected, most recently added first.
   List<UploadItem> get selected => _with(ItemStatus.selected).reversed.toList();
@@ -443,7 +444,7 @@ class UploadStore extends ChangeNotifier {
   /// Photos left for [later] stay in the Upload folder, with the caption;
   /// whatever else was there goes back to Selected, with its edit. Nothing
   /// moves if nothing was posted.
-  Future<void> finishPublishing(Iterable<String> posted, {Iterable<String> later = const []}) async {
+  Future<void> finishPublishing(Iterable<String> posted, {Iterable<String> later = const [], bool keepStoriesForPosts = false}) async {
     final ids = posted.toSet(), keep = later.toSet();
     session = null;
     if (ids.isNotEmpty) {
@@ -451,7 +452,7 @@ class UploadStore extends ChangeNotifier {
       items = [
         for (final i in items)
           ids.contains(i.shotId)
-              ? i.copyWith(status: ItemStatus.published, postedAt: now)
+              ? i.copyWith(status: keepStoriesForPosts ? ItemStatus.storyLater : ItemStatus.published, postedAt: now)
               : i.status == ItemStatus.queued && !keep.contains(i.shotId)
               ? i.copyWith(status: ItemStatus.selected)
               : i,
@@ -462,7 +463,7 @@ class UploadStore extends ChangeNotifier {
     await _save();
     for (final i in items) {
       final g = i.galleryUri;
-      if (ids.contains(i.shotId) && g != null) {
+      if (ids.contains(i.shotId) && i.status == ItemStatus.published && g != null) {
         ShareChannel.instance.moveInGallery(g, 'ShotDrop/Published').catchError((Object _) {});
       }
     }
@@ -585,7 +586,7 @@ class AppSettings extends ChangeNotifier {
 
   bool portraitAt45 = true; // portrait shots start cropped to Instagram's 4:5
   int saveEdge = 2160; // long edge of saved edits, in pixels (1080 = Instagram's own size)
-  bool galleryCopy = true; // also put edits in Pictures/ShotDrop
+  bool galleryCopy = false; // optionally put edits in Pictures/ShotDrop
   String publishMode = 'post'; // a PublishMode name: what the Publish sheet starts on
   String postFit = 'crop'; // a PostFit name: how photos that don't fit a post are reshaped
   bool checkUpdates = true; // look for a new version at launch

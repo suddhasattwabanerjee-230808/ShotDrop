@@ -25,7 +25,7 @@ import 'setup_screen.dart';
 /// The Publish sheet: how to post [items] (the ones ticked in the Upload
 /// folder; the rest stay there). Start sends the first of them straight out
 /// to Instagram; "Did It Post?" ([PublishScreen]) comes up on the way back.
-Future<void> showPublishSheet(BuildContext context, List<UploadItem> items) async {
+Future<void> showPublishSheet(BuildContext context, List<UploadItem> items, {PublishMode? initialMode}) async {
   final scope = AppScope.of(context);
   if (items.isEmpty) return;
   ({bool instagram, bool facebook}) apps;
@@ -40,7 +40,7 @@ Future<void> showPublishSheet(BuildContext context, List<UploadItem> items) asyn
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _PublishSheet(items: items, apps: apps, scope: scope, reshaped: reshapedCount(aspects)),
+    builder: (_) => _PublishSheet(items: items, apps: apps, scope: scope, reshaped: reshapedCount(aspects), initialMode: initialMode),
   );
 }
 
@@ -59,9 +59,10 @@ Future<double?> photoAspect(String path) async {
 }
 
 class _PublishSheet extends StatefulWidget {
-  const _PublishSheet({required this.items, required this.apps, required this.scope, required this.reshaped});
+  const _PublishSheet({required this.items, required this.apps, required this.scope, required this.reshaped, required this.initialMode});
   final List<UploadItem> items;
   final int reshaped; // photos that don't fit an Instagram post as they are
+  final PublishMode? initialMode;
   final ({bool instagram, bool facebook}) apps;
   final AppScope scope;
 
@@ -70,9 +71,10 @@ class _PublishSheet extends StatefulWidget {
 }
 
 class _PublishSheetState extends State<_PublishSheet> {
-  late var _mode = PublishMode.values.asNameMap()[widget.scope.settings.publishMode] ?? PublishMode.post;
+  late var _mode = widget.initialMode ?? PublishMode.values.asNameMap()[widget.scope.settings.publishMode] ?? PublishMode.post;
   late bool _facebook = widget.apps.facebook && !widget.scope.social.instagramSharesToFacebook;
   late var _fit = PostFit.values.asNameMap()[widget.scope.settings.postFit] ?? PostFit.crop;
+  bool _keepStoriesForPosts = false;
   String? _busy; // getting the photos ready, after Start
 
   Future<void> _start() async {
@@ -86,6 +88,7 @@ class _PublishSheetState extends State<_PublishSheet> {
         mode: _mode,
         steps: buildPlan(widget.items, _mode, facebook: _mode.hasPost && _facebook),
         fit: _fit,
+        keepStoriesForPosts: _mode == PublishMode.story && _keepStoriesForPosts,
       ),
     );
     final error = await openStep(uploads, messenger, busy: (b) => mounted ? setState(() => _busy = b) : null);
@@ -141,6 +144,14 @@ class _PublishSheetState extends State<_PublishSheet> {
             const SizedBox(height: 16),
             for (final m in PublishMode.values)
               _ModeCard(mode: m, detail: _describe(m), selected: _mode == m, onTap: () => setState(() => _mode = m)),
+            if (_mode == PublishMode.story)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _keepStoriesForPosts,
+                onChanged: (v) => setState(() => _keepStoriesForPosts = v),
+                title: const Text('Keep For Posting As A Post Later', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text('After the story is posted, keep a copy in the Stories section.', style: TextStyle(fontSize: 12, color: muted)),
+              ),
             if (_mode.hasPost && reshaped > 0) ...[
               const SizedBox(height: 8),
               Text(
@@ -470,7 +481,7 @@ class _PublishScreenState extends State<PublishScreen> {
   Future<void> _finish(PublishSession s) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    await _uploads.finishPublishing(s.postedIds, later: s.laterIds);
+    await _uploads.finishPublishing(s.postedIds, later: s.laterIds, keepStoriesForPosts: s.keepStoriesForPosts);
     if (_scope.settings.autoTidy) tidyStorage(_uploads, _scope.settings).ignore();
     if (!mounted) return;
     if (s.postedIds.isEmpty) {
@@ -631,11 +642,13 @@ class _PublishScreenState extends State<PublishScreen> {
     ].join(' · ');
     final facebook = _scope.social.instagramSharesToFacebook ? '\nInstagram shares them to your Facebook too.' : '';
     final rest = later == 0 ? '' : '\n$later left in the Upload folder for later.';
+    final savedForPosts = s.keepStoriesForPosts ? '\nSaved in Upload Folder → Stories for posting as a post later.' : '';
+    final copies = s.keepStoriesForPosts ? '' : '\nThe edited copies are now in Pictures/ShotDrop/Published.';
     return StatePanel(
       icon: Icons.check_rounded,
       iconWidget: const _DoneBadge(),
       title: 'Posted To Instagram',
-      body: '$counts$facebook$rest\nThe edited copies are now in Pictures/ShotDrop/Published.',
+      body: '$counts$facebook$rest$savedForPosts$copies',
       actions: [
         FilledButton(onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst), child: const Text('Done')),
       ],

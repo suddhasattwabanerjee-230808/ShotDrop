@@ -342,6 +342,12 @@ class _GridScreenState extends State<GridScreen> {
                           label: const Text('Share'),
                         ),
                         const SizedBox(width: 8),
+                        IconButton.filledTonal(
+                          tooltip: 'Save To Gallery',
+                          onPressed: () => saveShotsToGallery(context, [for (final s in shots) if (_selected.contains(s.id)) s]),
+                          icon: const Icon(Icons.download_rounded),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () => _addToSelected(shots),

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.2] - 2026-10-26 (build 19)
+
+More control over edits, gallery copies, and story-only posts.
+
+- **Revert to Original** resets every edit in progress.
+- **Blur selected areas** such as number plates, faces, or other details.
+- **Remove objects with a patch:** select the unwanted area, then choose a clean area to copy over it.
+- **Save to Gallery is optional.** Save edited uploads or photos from the share actions when you choose; automatic gallery copies are off by default.
+- **Keep Story Only uploads for posts later.** They appear in a Stories section, with an action to publish them as posts.
+
 ## [0.8.1] - 2026-10-24 (build 18)
 
 Sharing, background face finding, and a consistent turn for card photos.

@@ -72,3 +72,38 @@ Future<bool> shareShots(BuildContext context, List<CardShot> shots) async {
     return false;
   }
 }
+
+/// Copies already prepared images to the phone gallery when the user asks.
+Future<int> savePathsToGallery(BuildContext context, List<String> paths, List<String> names) async {
+  if (paths.isEmpty) return 0;
+  final messenger = ScaffoldMessenger.of(context);
+  var saved = 0;
+  for (var i = 0; i < paths.length; i++) {
+    try {
+      final uri = await CardChannel.instance.saveToGallery(paths[i], names[i], album: 'ShotDrop/Upload');
+      if (uri != null) saved++;
+    } catch (_) {}
+  }
+  if (context.mounted) {
+    messenger.showSnackBar(SnackBar(content: Text(saved == 0 ? 'Couldn’t Save To Gallery' : saved == 1 ? 'Saved To Gallery' : '$saved Photos Saved To Gallery')));
+  }
+  return saved;
+}
+
+Future<int> saveShotsToGallery(BuildContext context, List<CardShot> shots) async {
+  final files = [for (final s in shots) ?s.jpg];
+  if (files.isEmpty) return 0;
+  final dir = Directory('${(await getApplicationSupportDirectory()).path}/gallery-save');
+  if (await dir.exists()) await dir.delete(recursive: true);
+  await dir.create(recursive: true);
+  final paths = <String>[];
+  final names = <String>[];
+  for (final (i, file) in files.indexed) {
+    final path = '${dir.path}/$i.jpg';
+    await CardChannel.instance.importSource(file, path, turn: turnOf(file));
+    paths.add(path);
+    final name = file.name.contains('.') ? file.name.substring(0, file.name.lastIndexOf('.')) : file.name;
+    names.add(name);
+  }
+  return savePathsToGallery(context, paths, names);
+}
