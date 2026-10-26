@@ -272,9 +272,8 @@ class _Card extends StatelessWidget {
 }
 
 class _AppRow extends StatelessWidget {
-  const _AppRow({required this.name, required this.installed, required this.onInstall, this.subtitle});
+  const _AppRow({required this.name, required this.installed, required this.onInstall});
   final String name;
-  final String? subtitle;
   final bool? installed; // null while checking
   final VoidCallback onInstall;
 
@@ -286,7 +285,6 @@ class _AppRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-            if (subtitle != null) Text(subtitle!, style: TextStyle(fontSize: 12, color: muted)),
           ],
         ),
       ),

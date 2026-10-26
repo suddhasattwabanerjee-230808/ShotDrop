@@ -470,10 +470,7 @@ class _EditorScreenState extends State<EditorScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(28, 84, 28, 28),
-            child: switch (_target.card) {
-              final card? => Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
-              null => Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
-            },
+            child: Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
           ),
           Positioned(left: 0, right: 0, bottom: 20, child: Center(child: _loadingPill())),
         ],
