@@ -14,6 +14,7 @@ import '../models.dart';
 import '../props.dart';
 import '../publish.dart';
 import '../share_channel.dart';
+import '../sharing.dart';
 import '../storage.dart';
 import '../stores.dart';
 import '../theme.dart';
@@ -452,6 +453,10 @@ class _PublishScreenState extends State<PublishScreen> {
   late final _scope = AppScope.of(context);
   late final _uploads = _scope.uploads;
   PublishSession? _ended; // once it's over: what went out, for the summary
+  List<UploadItem> _postedPhotos = const [];
+  final _saveSelection = <String>{};
+  bool _savingPostedPhotos = false;
+  int? _savedPostedCount;
   String? _busy;
 
   Future<void> _open() async {
@@ -482,33 +487,73 @@ class _PublishScreenState extends State<PublishScreen> {
   Future<void> _finish(PublishSession s) async {
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    _postedPhotos = _postedItemsFrom(s);
     await _uploads.finishPublishing(s.postedIds, later: s.laterIds, keepStoriesForPosts: s.keepStoriesForPosts);
-    if (_scope.settings.autoTidy) tidyStorage(_uploads, _scope.settings).ignore();
     if (!mounted) return;
     if (s.postedIds.isEmpty) {
+      if (_scope.settings.autoTidy) tidyStorage(_uploads, _scope.settings).ignore();
       navigator.pop();
       messenger.showSnackBar(const SnackBar(content: Text('Kept In The Upload Folder For Later')));
     } else {
-      setState(() => _ended = s);
+      setState(() {
+        _busy = null;
+        _ended = s;
+      });
     }
+  }
+
+  List<UploadItem> _postedItemsFrom(PublishSession s) {
+    final seen = <String>{};
+    final posted = <UploadItem>[];
+    for (final (index, step) in s.steps.indexed) {
+      if (s.status[index] != StepStatus.done || step.kind == StepKind.facebookPost) continue;
+      for (final item in step.items) {
+        if (seen.add(item.shotId)) posted.add(item);
+      }
+    }
+    return posted;
+  }
+
+  Future<void> _savePostedPhotos() async {
+    final picked = [for (final item in _postedPhotos) if (_saveSelection.contains(item.shotId)) item];
+    if (picked.isEmpty) return;
+    setState(() => _savingPostedPhotos = true);
+    try {
+      final count = await savePathsToGallery(
+        context,
+        [for (final item in picked) item.previewPath],
+        [for (final item in picked) item.name],
+      );
+      if (mounted) setState(() => _savedPostedCount = count);
+    } finally {
+      if (mounted) setState(() => _savingPostedPhotos = false);
+    }
+  }
+
+  void _finishReview() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
   Widget build(BuildContext context) {
     final social = _scope.social;
     return PopScope(
-      canPop: _ended != null,
+      canPop: _ended != null && !_savingPostedPhotos,
       // Back without answering: the same as Do It Later.
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _busy == null) _later();
+        if (didPop && _ended != null && _scope.settings.autoTidy) {
+          tidyStorage(_uploads, _scope.settings).ignore();
+        } else if (!didPop && _ended == null && _busy == null) {
+          _later();
+        }
       },
       child: Scaffold(
         appBar: AppBar(
-          automaticallyImplyLeading: _ended != null,
+          automaticallyImplyLeading: _ended != null && !_savingPostedPhotos,
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_ended != null ? 'All Done' : 'Publishing'),
+              Text(_ended != null ? 'Posted Photos' : 'Publishing'),
               if (social.handle.isNotEmpty)
                 Text(
                   '@${social.handle}',
@@ -641,18 +686,172 @@ class _PublishScreenState extends State<PublishScreen> {
       if (posts > 0) '$posts ${posts == 1 ? 'Post' : 'Posts'}',
       if (stories > 0) '$stories ${stories == 1 ? 'Story' : 'Stories'}',
     ].join(' · ');
-    final facebook = _scope.social.instagramSharesToFacebook ? '\nInstagram shares them to your Facebook too.' : '';
-    final rest = later == 0 ? '' : '\n$later left in the Upload folder for later.';
-    final savedForPosts = s.keepStoriesForPosts ? '\nSaved in Uploads → Saved For Posts to publish later.' : '';
-    final copies = s.keepStoriesForPosts ? '' : '\nThe edited copies remain in Pictures/ShotDrop.';
-    return StatePanel(
-      icon: Icons.check_rounded,
-      iconWidget: const _DoneBadge(),
-      title: 'Posted To Instagram',
-      body: '$counts$facebook$rest$savedForPosts$copies',
-      actions: [
-        FilledButton(onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst), child: const Text('Done')),
-      ],
+    final selectionCount = _saveSelection.length;
+    final total = _postedPhotos.length;
+    final allSelected = total > 0 && selectionCount == total;
+    final supporting = [
+      if (later > 0) '$later left in Uploads for later',
+      if (s.keepStoriesForPosts) 'Story copies are in Saved For Posts',
+      if (_scope.social.instagramSharesToFacebook) 'Also shared to Facebook',
+    ].join(' · ');
+    return SafeArea(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(color: grass.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(15)),
+                  child: Icon(Icons.check_rounded, color: grass, size: 28),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Posted To Instagram', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 3),
+                      Text(counts, style: TextStyle(color: muted, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (supporting.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+              child: Text(supporting, textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 11)),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 12, 8),
+            child: Row(
+              children: [
+                const Expanded(child: Text('Photos Posted', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16))),
+                TextButton.icon(
+                  onPressed: _savedPostedCount != null || _savingPostedPhotos
+                      ? null
+                      : () => setState(() {
+                          if (allSelected) {
+                            _saveSelection.clear();
+                          } else {
+                            _saveSelection.addAll(_postedPhotos.map((item) => item.shotId));
+                          }
+                        }),
+                  icon: Icon(allSelected ? Icons.deselect_rounded : Icons.select_all_rounded, size: 18),
+                  label: Text(allSelected ? 'Clear' : 'Select All'),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              itemCount: _postedPhotos.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 10,
+                childAspectRatio: 0.72,
+              ),
+              itemBuilder: (context, index) {
+                final item = _postedPhotos[index];
+                final selected = _saveSelection.contains(item.shotId);
+                return GestureDetector(
+                  onTap: _savedPostedCount != null || _savingPostedPhotos
+                      ? null
+                      : () => setState(() => selected ? _saveSelection.remove(item.shotId) : _saveSelection.add(item.shotId)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.file(
+                                File(item.previewPath),
+                                fit: BoxFit.cover,
+                                cacheWidth: 360,
+                                errorBuilder: (_, _, _) => ColoredBox(color: surfaceHigh),
+                              ),
+                              if (selected) const ColoredBox(color: Color(0x44000000)),
+                              Positioned(
+                                top: 6,
+                                right: 6,
+                                child: Icon(
+                                  selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                                  color: selected ? accent : Colors.white,
+                                  shadows: const [Shadow(color: Colors.black54, blurRadius: 4)],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_savingPostedPhotos)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 8, 18, 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 10),
+                  Text('Saving To Gallery…'),
+                ],
+              ),
+            )
+          else if (_savedPostedCount != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    '${_savedPostedCount!} ${_savedPostedCount == 1 ? 'photo' : 'photos'} saved to Pictures/ShotDrop.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(onPressed: _finishReview, child: const Text('Done')),
+                ],
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Save any of these photos to Pictures/ShotDrop?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: muted, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: selectionCount == 0 ? null : _savePostedPhotos,
+                    icon: const Icon(Icons.download_rounded),
+                    label: Text(selectionCount == 0 ? 'Select Photos To Save' : 'Save $selectionCount To Gallery'),
+                  ),
+                  TextButton(onPressed: _finishReview, child: const Text('Not Now')),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

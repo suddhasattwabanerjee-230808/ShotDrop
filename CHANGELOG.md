@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.7] - 2026-10-27 (build 24)
+
+Review and optionally save photos after posting.
+
+- **Posted Photos page** lists the photos that went out after the final “Did It Post?” confirmation.
+- **Choose which posted photos to save** to Pictures/ShotDrop, with Select All, individual selection, and Not Now.
+
 ## [0.8.6] - 2026-10-26 (build 23)
 
 Rotate card JPEGs from their source metadata.
