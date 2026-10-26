@@ -894,7 +894,7 @@ class _BlurStageState extends State<_BlurStage> {
     final areas = [...widget.areas];
     final key = areas.map((r) => '${r.left},${r.top},${r.right},${r.bottom}').join('|');
     _blurKey = key;
-    final rendered = await renderFinal(source, EditParams(blurAreas: areas), maxEdge: _previewEdge);
+    final rendered = await renderFinal(source, EditParams(blurAreas: areas), maxEdge: 1600);
     if (!mounted || source != widget.image || key != _blurKey) {
       rendered.dispose();
       return;
