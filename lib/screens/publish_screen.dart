@@ -1,8 +1,6 @@
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,7 +9,6 @@ import '../card_channel.dart';
 import '../edit/post_shape.dart';
 import '../edit/story.dart';
 import '../models.dart';
-import '../props.dart';
 import '../publish.dart';
 import '../share_channel.dart';
 import '../sharing.dart';
@@ -921,100 +918,4 @@ class _Thumbs extends StatelessWidget {
       ),
     );
   }
-}
-
-/// The big green tick, popping in with a burst of confetti.
-class _DoneBadge extends StatelessWidget {
-  const _DoneBadge();
-
-  @override
-  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
-    tween: Tween(begin: 0, end: 1),
-    duration: const Duration(milliseconds: 1400),
-    builder: (context, v, _) => SizedBox(
-      width: 240,
-      height: 170,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _ConfettiBurst(v, rainbow)),
-          ),
-          // A lion popping up to cheer, and balloons floating up beside it.
-          Positioned(
-            left: 4,
-            bottom: 0,
-            child: Opacity(
-              opacity: ((v - 0.35) * 4).clamp(0.0, 1.0),
-              child: Transform.translate(
-                offset: Offset(0, 24 * (1 - Curves.easeOutBack.transform(((v - 0.35) * 2).clamp(0.0, 1.0)))),
-                child: const Prop(PropKind.lion, size: 50),
-              ),
-            ),
-          ),
-          for (final (right, size, phase, tint) in [(8.0, 28.0, 0.0, coral), (34.0, 22.0, 0.4, grape)])
-            Positioned(
-              right: right,
-              top: 6 + 60 * (1 - Curves.easeOut.transform(v)),
-              child: Opacity(
-                opacity: v.clamp(0.0, 1.0),
-                child: Prop(PropKind.balloon, size: size, phase: phase, tint: tint),
-              ),
-            ),
-          Transform.scale(
-            scale: Curves.elasticOut.transform((v * 2.2).clamp(0.0, 1.0)),
-            child: Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [grass, sky],
-                ),
-                borderRadius: BorderRadius.circular(38),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.4), width: 3),
-                boxShadow: [BoxShadow(color: deeper(sky, 0.2), offset: const Offset(0, 6))],
-              ),
-              child: const Icon(Icons.check_rounded, size: 60, color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// Confetti flying out from the middle as [t] goes 0 to 1, settling on the last frame.
-class _ConfettiBurst extends CustomPainter {
-  _ConfettiBurst(this.t, this.colors);
-  final double t;
-  final List<Color> colors;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final go = Curves.easeOutCubic.transform(t);
-    for (var i = 0; i < 22; i++) {
-      final angle = i * 2.399963; // spread round evenly (the golden angle)
-      final reach = (0.55 + (i * 37 % 10) / 22) * size.height * 0.62 * go;
-      final at = c + Offset(math.cos(angle) * reach * 1.45, math.sin(angle) * reach + 14 * t * t);
-      final paint = Paint()..color = colors[i % colors.length].withValues(alpha: 0.95);
-      canvas.save();
-      canvas.translate(at.dx, at.dy);
-      canvas.rotate(angle + t * 4);
-      if (i % 3 == 0) {
-        canvas.drawCircle(Offset.zero, 4, paint);
-      } else {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: 11, height: 5), const Radius.circular(2.5)),
-          paint,
-        );
-      }
-      canvas.restore();
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ConfettiBurst old) => old.t != t || !listEquals(old.colors, colors);
 }
