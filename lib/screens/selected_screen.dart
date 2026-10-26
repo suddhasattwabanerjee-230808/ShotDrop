@@ -29,10 +29,11 @@ class _SelectedScreenState extends State<SelectedScreen> {
 
   bool get _picking => _picked.isNotEmpty;
 
-  Future<void> _edit(List<UploadItem> items) async {
+  Future<void> _edit(List<UploadItem> items, {bool startFromOriginal = false}) async {
     final card = AppScope.of(context).card;
     final targets = [
-      for (final i in items) EditTarget.fromItem(i, card: card.shots.where((s) => s.id == i.shotId).firstOrNull?.jpg),
+      for (final i in items)
+        EditTarget.fromItem(i, card: card.shots.where((s) => s.id == i.shotId).firstOrNull?.jpg, startFromOriginal: startFromOriginal),
     ];
     final saved = await openEditor(context, targets);
     if (!mounted) return;
@@ -93,27 +94,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
     }
   }
 
-  Future<void> _revertOriginal(UploadItem item) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Revert To Original?'),
-        content: Text('${item.name} will return to the original photo.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Revert')),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-    await AppScope.of(context).uploads.revertToOriginal(
-      shotId: item.shotId,
-      name: item.name,
-      taken: item.taken,
-      sourcePath: item.sourcePath,
-    );
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reverted To Original')));
-  }
+  Future<void> _revertOriginal(UploadItem item) => _edit([item], startFromOriginal: true);
 
   void _toggle(UploadItem i) {
     HapticFeedback.selectionClick();

@@ -22,17 +22,18 @@ import 'body_tools.dart';
 
 /// A photo to edit: straight from the card, or one already in the Upload folder.
 class EditTarget {
-  const EditTarget({required this.shotId, required this.name, required this.taken, this.card, this.existing});
+  const EditTarget({required this.shotId, required this.name, required this.taken, this.card, this.existing, this.startFromOriginal = false});
 
   factory EditTarget.fromShot(CardShot s) => EditTarget(shotId: s.id, name: s.name, taken: s.taken, card: s.jpg);
 
-  factory EditTarget.fromItem(UploadItem i, {CardFile? card}) =>
-      EditTarget(shotId: i.shotId, name: i.name, taken: i.taken, card: card, existing: i);
+  factory EditTarget.fromItem(UploadItem i, {CardFile? card, bool startFromOriginal = false}) =>
+      EditTarget(shotId: i.shotId, name: i.name, taken: i.taken, card: card, existing: i, startFromOriginal: startFromOriginal);
 
   final String shotId, name;
   final DateTime taken;
   final CardFile? card;
   final UploadItem? existing;
+  final bool startFromOriginal;
 }
 
 /// Edits [targets] one after another. Returns how many went into the Upload folder.
@@ -142,7 +143,11 @@ class _EditorScreenState extends State<EditorScreen> {
       final o = Size(image.width.toDouble(), image.height.toDouble());
       // A photo from Selected that was never edited starts like a fresh one from the card.
       final existing = target.existing;
-      final params = existing != null && existing.edited ? existing.params : _defaultsFor(o, AppScope.of(context).settings);
+      final params = target.startFromOriginal
+          ? const EditParams()
+          : existing != null && existing.edited
+          ? existing.params
+          : _defaultsFor(o, AppScope.of(context).settings);
       setState(() {
         _preview?.dispose();
         _preview = image;
@@ -285,26 +290,17 @@ class _EditorScreenState extends State<EditorScreen> {
     if (mounted) Navigator.of(context).pop(_saved);
   }
 
-  Future<void> _revertToOriginal() async {
-    final source = _sourcePath;
-    if (source == null || _status != null) return;
-    final target = _target;
-    final uploads = AppScope.of(context).uploads;
-    setState(() => _status = 'Restoring Original…');
-    try {
-      await uploads.revertToOriginal(
-        shotId: target.shotId,
-        name: target.name,
-        taken: target.taken,
-        sourcePath: source,
-      );
-      HapticFeedback.mediumImpact();
-      _next();
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _status = null);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Couldn’t Revert This Photo: $e')));
-    }
+  void _revertToOriginal() {
+    if (_status != null || _sourcePath == null) return;
+    HapticFeedback.selectionClick();
+    const original = EditParams();
+    setState(() {
+      if (_h >= 0 && identical(_history[_h], original)) return;
+      _p = original;
+      _history.removeRange(_h + 1, _history.length);
+      _history.add(original);
+      _h = _history.length - 1;
+    });
   }
 
   // --- Edit history -------------------------------------------------------------

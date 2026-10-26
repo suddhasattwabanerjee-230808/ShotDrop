@@ -274,7 +274,7 @@ class UploadItem {
   final String sourcePath; // upright, untouched copy of the card JPEG
   final String? exportPath; // the edited JPEG that gets posted; null until it's edited
   final EditParams params;
-  final String? galleryUri; // its optional copy in Pictures/short
+  final String? galleryUri; // its optional copy in Pictures/ShotDrop
   final ItemStatus status;
   final int? width, height; // of the export, in pixels
   final DateTime? postedAt; // when it went out (its copies are tidied away some days later)

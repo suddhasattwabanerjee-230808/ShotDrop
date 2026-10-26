@@ -77,13 +77,13 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 
-  Future<void> _reEdit(UploadItem item) async {
+  Future<void> _reEdit(UploadItem item, {bool startFromOriginal = false}) async {
     final card = AppScope.of(context).card;
     CardFile? jpg;
     for (final s in card.shots) {
       if (s.id == item.shotId) jpg = s.jpg;
     }
-    await openEditor(context, [EditTarget.fromItem(item, card: jpg)]);
+    await openEditor(context, [EditTarget.fromItem(item, card: jpg, startFromOriginal: startFromOriginal)]);
   }
 
   Future<void> _saveGallery(List<UploadItem> items) => savePathsToGallery(
@@ -92,27 +92,7 @@ class _UploadScreenState extends State<UploadScreen> {
     [for (final i in items) '${i.name}_edit'],
   ).then((_) {});
 
-  Future<void> _revertOriginal(UploadItem item) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Revert To Original?'),
-        content: Text('${item.name} will return to Selected with its original photo.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Revert')),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-    await AppScope.of(context).uploads.revertToOriginal(
-      shotId: item.shotId,
-      name: item.name,
-      taken: item.taken,
-      sourcePath: item.sourcePath,
-    );
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Original Photo Moved To Selected')));
-  }
+  Future<void> _revertOriginal(UploadItem item) => _reEdit(item, startFromOriginal: true);
 
   @override
   Widget build(BuildContext context) {

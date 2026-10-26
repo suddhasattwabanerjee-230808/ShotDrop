@@ -395,30 +395,6 @@ class UploadStore extends ChangeNotifier {
     await _save();
   }
 
-  /// Discards an item's edit and puts the untouched source back in Selected.
-  Future<void> revertToOriginal({
-    required String shotId,
-    required String name,
-    required DateTime taken,
-    required String sourcePath,
-  }) async {
-    final old = byShot(shotId);
-    final original = UploadItem(
-      shotId: shotId,
-      name: name,
-      taken: taken,
-      sourcePath: old?.sourcePath ?? sourcePath,
-      status: ItemStatus.selected,
-    );
-    items = [...items.where((i) => i.shotId != shotId), original];
-    notifyListeners();
-    await _save();
-    if (old?.exportPath case final path?) _deleteQuietly(path);
-    if (old?.galleryUri case final uri?) {
-      _card.deleteFromGallery(uri).catchError((Object _) {});
-    }
-  }
-
   Future<UploadItem?> remove(String shotId) async {
     final item = byShot(shotId);
     if (item == null) return null;
@@ -464,7 +440,7 @@ class UploadStore extends ChangeNotifier {
   }
 
   /// After a round of publishing: [posted] photos are marked posted (the grid
-  /// shows POSTED; their gallery copies stay in Pictures/short).
+  /// shows POSTED; their gallery copies stay in Pictures/ShotDrop).
   /// Photos left for [later] stay in the Upload folder, with the caption;
   /// whatever else was there goes back to Selected, with its edit. Nothing
   /// moves if nothing was posted.
@@ -488,7 +464,7 @@ class UploadStore extends ChangeNotifier {
     for (final i in items) {
       final g = i.galleryUri;
       if (ids.contains(i.shotId) && i.status == ItemStatus.published && g != null) {
-        ShareChannel.instance.moveInGallery(g, 'short').catchError((Object _) {});
+        ShareChannel.instance.moveInGallery(g, 'ShotDrop').catchError((Object _) {});
       }
     }
   }

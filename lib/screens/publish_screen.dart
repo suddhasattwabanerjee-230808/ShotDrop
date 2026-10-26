@@ -644,7 +644,7 @@ class _PublishScreenState extends State<PublishScreen> {
     final facebook = _scope.social.instagramSharesToFacebook ? '\nInstagram shares them to your Facebook too.' : '';
     final rest = later == 0 ? '' : '\n$later left in the Upload folder for later.';
     final savedForPosts = s.keepStoriesForPosts ? '\nSaved in Uploads → Saved For Posts to publish later.' : '';
-    final copies = s.keepStoriesForPosts ? '' : '\nThe edited copies remain in Pictures/short.';
+    final copies = s.keepStoriesForPosts ? '' : '\nThe edited copies remain in Pictures/ShotDrop.';
     return StatePanel(
       icon: Icons.check_rounded,
       iconWidget: const _DoneBadge(),

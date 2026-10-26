@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.4] - 2026-10-26 (build 21)
+
+Revert edits in place and save gallery copies to ShotDrop.
+
+- **Revert To Original** now opens the unedited photo in the editor. It stays in the editor until you save or cancel.
+- **Revert buttons in Uploads and Selected** open the photo in the editor at its original state.
+- **Gallery copies go in Pictures/ShotDrop.**
+
 ## [0.8.3] - 2026-10-26 (build 20)
 
 Saved story photos, stronger blur, and a true revert action.
