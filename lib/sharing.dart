@@ -7,11 +7,10 @@ import 'package:path_provider/path_provider.dart';
 import 'card_channel.dart';
 import 'models.dart';
 import 'share_channel.dart';
-import 'turn.dart';
 
 /// Gallery photos to Android's share sheet (WhatsApp, Bluetooth, Drive,
-/// Messages…), as ShotDrop shows them: turned (see turnOf), under the
-/// camera's file names. Each is copied off the card (or out of the phone's
+/// Messages…), respecting the photo's source orientation, under the camera's
+/// file names. Each is copied off the card (or out of the phone's
 /// gallery) into files/share, not the cache: the cache is cleared as
 /// ShotDrop goes behind the share sheet, while the other app still has to
 /// read them. Each share clears the last one's copies. RAW-only shots are
@@ -50,7 +49,7 @@ Future<bool> shareShots(BuildContext context, List<CardShot> shots) async {
         name = '$stem-$i.jpg';
       }
       final path = '${dir.path}/$name';
-      await CardChannel.instance.importSource(f, path, turn: turnOf(f));
+      await CardChannel.instance.importSource(f, path);
       paths.add(path);
       done.value++;
     }
@@ -100,7 +99,7 @@ Future<int> saveShotsToGallery(BuildContext context, List<CardShot> shots) async
   final names = <String>[];
   for (final (i, file) in files.indexed) {
     final path = '${dir.path}/$i.jpg';
-    await CardChannel.instance.importSource(file, path, turn: turnOf(file));
+    await CardChannel.instance.importSource(file, path);
     paths.add(path);
     final name = file.name.contains('.') ? file.name.substring(0, file.name.lastIndexOf('.')) : file.name;
     names.add(name);

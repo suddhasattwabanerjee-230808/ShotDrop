@@ -160,9 +160,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                   icon: Icons.alternate_email_rounded,
                   leading: const InstagramLogo(),
                   title: scope.social.handle.isEmpty ? 'Instagram & Facebook' : '@${scope.social.handle}',
-                  subtitle: scope.social.instagramSharesToFacebook
-                      ? 'Posts Also Go To Facebook, Through Instagram'
-                      : 'Username, Apps, Sharing To Facebook',
+                  subtitle: 'Username, Instagram and Accounts Center settings',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const SetupScreen())),
                 ),
                 _Row(

@@ -11,7 +11,6 @@ import 'models.dart';
 import 'prefetch.dart';
 import 'publish.dart';
 import 'share_channel.dart';
-import 'turn.dart';
 
 /// The app's saved settings, kept by Android (AppChannel, its own
 /// SharedPreferences file). Not the shared_preferences plugin: in release
@@ -372,7 +371,7 @@ class UploadStore extends ChangeNotifier {
         if (!await File(path).exists()) {
           await File(path).parent.create(recursive: true);
           if (!await SourcePrefetch.take(s.jpg!, path)) {
-            await _card.importSource(s.jpg!, path, turn: turnOf(s.jpg!));
+            await _card.importSource(s.jpg!, path);
           }
         }
         if (existing != null) {
@@ -578,34 +577,26 @@ class UploadStore extends ChangeNotifier {
   }
 }
 
-/// The Instagram / Facebook side: who's posting, and whether Instagram
-/// already shares posts to Facebook by itself (Accounts Center).
+/// Instagram: which username to show and whether setup was seen.
 class SocialSettings extends ChangeNotifier {
   static const _handleKey = 'shotdrop.ig_handle.v1';
-  static const _fbShareKey = 'shotdrop.fb_cross_post.v1';
   static const _setupKey = 'shotdrop.social_setup_seen.v1';
 
   String handle = '';
-  bool instagramSharesToFacebook = false;
   bool setupSeen = false;
 
   Future<void> load() async {
     final p = await prefs();
     handle = p.getString(_handleKey) ?? '';
-    instagramSharesToFacebook = p.getBool(_fbShareKey) ?? false;
     setupSeen = p.getBool(_setupKey) ?? false;
     notifyListeners();
   }
 
-  Future<void> save({String? handle, bool? instagramSharesToFacebook, bool? setupSeen}) async {
+  Future<void> save({String? handle, bool? setupSeen}) async {
     final p = await prefs();
     if (handle != null) {
       this.handle = handle.trim().replaceFirst(RegExp(r'^@+'), '');
       await p.setString(_handleKey, this.handle);
-    }
-    if (instagramSharesToFacebook != null) {
-      this.instagramSharesToFacebook = instagramSharesToFacebook;
-      await p.setBool(_fbShareKey, instagramSharesToFacebook);
     }
     if (setupSeen != null) {
       this.setupSeen = setupSeen;

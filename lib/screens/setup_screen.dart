@@ -23,7 +23,7 @@ class SetupScreen extends StatefulWidget {
 class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
   late final _social = AppScope.of(context).social;
   late final _handle = TextEditingController(text: _social.handle);
-  ({bool instagram, bool facebook})? _apps;
+  bool? _instagramInstalled;
 
   @override
   void initState() {
@@ -52,9 +52,9 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
   Future<void> _checkApps() async {
     try {
       final apps = await ShareChannel.instance.installedApps();
-      if (mounted) setState(() => _apps = apps);
+      if (mounted) setState(() => _instagramInstalled = apps.instagram);
     } catch (_) {
-      if (mounted) setState(() => _apps = (instagram: false, facebook: false));
+      if (mounted) setState(() => _instagramInstalled = false);
     }
   }
 
@@ -72,7 +72,6 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final apps = _apps;
     return PlayBackdrop(
       child: Scaffold(
         backgroundColor: Colors.transparent,
@@ -101,7 +100,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                 children: [
                   _AppRow(
                     name: 'Instagram App',
-                    installed: apps?.instagram,
+                    installed: _instagramInstalled,
                     onInstall: () => _install('com.instagram.android'),
                   ),
                   const Divider(height: 24),
@@ -143,7 +142,7 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Instagram can copy every post and story to your Facebook profile by itself. Turn it on once:',
+                    'Instagram can copy your posts and stories to Facebook. Configure this in Instagram\'s Accounts Center:',
                     style: TextStyle(fontSize: 13, color: muted, height: 1.4),
                   ),
                   const SizedBox(height: 12),
@@ -163,23 +162,6 @@ class _SetupScreenState extends State<SetupScreen> with WidgetsBindingObserver {
                     label: const Text('Open Accounts Center'),
                   ),
                   const SizedBox(height: 8),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    value: _social.instagramSharesToFacebook,
-                    onChanged: (v) => _social.save(instagramSharesToFacebook: v),
-                    title: const Text("It's On", style: TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(
-                      'Otherwise ShotDrop can open Facebook for each post too.',
-                      style: TextStyle(fontSize: 12, color: muted),
-                    ),
-                  ),
-                  const Divider(height: 24),
-                  _AppRow(
-                    name: 'Facebook App',
-                    subtitle: 'Only Needed If Instagram Doesn\'t Share For You',
-                    installed: apps?.facebook,
-                    onInstall: () => _install('com.facebook.katana'),
-                  ),
                 ],
               ),
             ],

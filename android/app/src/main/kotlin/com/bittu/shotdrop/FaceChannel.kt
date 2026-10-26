@@ -3,7 +3,6 @@ package com.bittu.shotdrop
 import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PointF
 import android.graphics.Rect
@@ -31,8 +30,7 @@ import kotlin.math.max
 
 /**
  * The People filter, on the phone, no network. For each photo: ML Kit finds
- * the faces in it, turned the way ShotDrop shows it (card photos 90° left;
- * as saved if nobody's found that way), then MobileFaceNet
+ * the faces in it as the source image presents them, then MobileFaceNet
  * (assets/MobileFaceNet.tflite, MIT) turns each face into 192 numbers that
  * are close for the same person. Dart groups them.
  */
@@ -80,12 +78,11 @@ class FaceChannel(
         if (call.method != "scan") return result.notImplemented()
         val uri = Uri.parse(call.argument<String>("uri")!!)
         val key = call.argument<String>("key")!!
-        val turn = call.argument<Int>("turn") ?: 0
         worker.execute {
             // Throwable, not Exception: a missing native library is an Error, and the
             // call must still be answered or Dart waits on it for ever.
             try {
-                val out = scan(uri, key, turn)
+                val out = scan(uri, key)
                 main.post { result.success(out) }
             } catch (e: Throwable) {
                 main.post { result.error("faces", reason(e), e.stackTraceToString().take(2000)) }
@@ -93,25 +90,13 @@ class FaceChannel(
         }
     }
 
-    private fun scan(uri: Uri, key: String, turn: Int): Map<String, Any?> {
-        val saved = software(preview(uri, EDGE) ?: throw IllegalStateException("Couldn't read this photo"))
-        var photo = saved
+    private fun scan(uri: Uri, key: String): Map<String, Any?> {
+        val photo = software(preview(uri, EDGE) ?: throw IllegalStateException("Couldn't read this photo"))
         try {
-            // Turned the way it's shown first; as saved if nobody's found that way.
-            if (turn % 4 != 0) photo = rotate(saved, turn)
-            var faces = detect(photo)
-            if (faces.isEmpty() && photo !== saved) {
-                val found = detect(saved)
-                if (found.isNotEmpty()) {
-                    photo.recycle()
-                    photo = saved
-                    faces = found
-                }
-            }
+            val faces = detect(photo)
             return mapOf("faces" to describe(photo, faces.take(MAX_FACES), key), "embedError" to embedError)
         } finally {
             photo.recycle()
-            if (saved !== photo) saved.recycle()
         }
     }
 
@@ -132,9 +117,6 @@ class FaceChannel(
             .filter { it.getLandmark(FaceLandmark.LEFT_EYE) != null && it.getLandmark(FaceLandmark.RIGHT_EYE) != null }
             .sortedByDescending { it.boundingBox.width() * it.boundingBox.height() }
     }
-
-    private fun rotate(bitmap: Bitmap, q: Int): Bitmap =
-        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, Matrix().apply { postRotate(90f * q) }, true)
 
     private fun describe(photo: Bitmap, faces: List<Face>, key: String): List<Map<String, Any>> {
         if (faces.isEmpty()) return emptyList()

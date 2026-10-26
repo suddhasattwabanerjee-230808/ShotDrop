@@ -13,7 +13,6 @@ import '../edit/shape.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
-import '../turn.dart';
 import '../pose_channel.dart';
 import '../prefetch.dart';
 import '../stores.dart';
@@ -135,7 +134,7 @@ class _EditorScreenState extends State<EditorScreen> {
           });
         }
         if (!await SourcePrefetch.take(card, path)) {
-          await CardChannel.instance.importSource(card, path, turn: turnOf(card));
+          await CardChannel.instance.importSource(card, path);
         }
       }
       final image = await _decode(path, maxEdge: _previewEdge);
@@ -472,7 +471,7 @@ class _EditorScreenState extends State<EditorScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(28, 84, 28, 28),
             child: switch (_target.card) {
-              final card? => Upright(file: card, child: Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true)),
+              final card? => Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
               null => Image.file(File(shown), fit: BoxFit.contain, gaplessPlayback: true),
             },
           ),

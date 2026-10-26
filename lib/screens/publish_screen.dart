@@ -26,11 +26,11 @@ import 'setup_screen.dart';
 Future<void> showPublishSheet(BuildContext context, List<UploadItem> items, {PublishMode? initialMode, bool postOnly = false}) async {
   final scope = AppScope.of(context);
   if (items.isEmpty) return;
-  ({bool instagram, bool facebook}) apps;
+  bool instagram;
   try {
-    apps = await ShareChannel.instance.installedApps();
+    instagram = (await ShareChannel.instance.installedApps()).instagram;
   } catch (_) {
-    apps = (instagram: false, facebook: false);
+    instagram = false;
   }
   final aspects = await Future.wait([for (final i in items) i.aspect != null ? Future.value(i.aspect) : photoAspect(i.previewPath)]);
   if (!context.mounted) return;
@@ -38,7 +38,7 @@ Future<void> showPublishSheet(BuildContext context, List<UploadItem> items, {Pub
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (_) => _PublishSheet(items: items, apps: apps, scope: scope, reshaped: reshapedCount(aspects), initialMode: initialMode, postOnly: postOnly),
+    builder: (_) => _PublishSheet(items: items, instagram: instagram, scope: scope, reshaped: reshapedCount(aspects), initialMode: initialMode, postOnly: postOnly),
   );
 }
 
@@ -57,12 +57,12 @@ Future<double?> photoAspect(String path) async {
 }
 
 class _PublishSheet extends StatefulWidget {
-  const _PublishSheet({required this.items, required this.apps, required this.scope, required this.reshaped, required this.initialMode, required this.postOnly});
+  const _PublishSheet({required this.items, required this.instagram, required this.scope, required this.reshaped, required this.initialMode, required this.postOnly});
   final List<UploadItem> items;
   final int reshaped; // photos that don't fit an Instagram post as they are
   final PublishMode? initialMode;
   final bool postOnly;
-  final ({bool instagram, bool facebook}) apps;
+  final bool instagram;
   final AppScope scope;
 
   @override
@@ -71,7 +71,6 @@ class _PublishSheet extends StatefulWidget {
 
 class _PublishSheetState extends State<_PublishSheet> {
   late var _mode = widget.postOnly ? PublishMode.post : widget.initialMode ?? PublishMode.values.asNameMap()[widget.scope.settings.publishMode] ?? PublishMode.post;
-  late bool _facebook = widget.apps.facebook && !widget.scope.social.instagramSharesToFacebook;
   late var _fit = PostFit.values.asNameMap()[widget.scope.settings.postFit] ?? PostFit.crop;
   bool _keepStoriesForPosts = true;
   String? _busy; // getting the photos ready, after Start
@@ -85,7 +84,7 @@ class _PublishSheetState extends State<_PublishSheet> {
     await uploads.setSession(
       PublishSession(
         mode: _mode,
-        steps: buildPlan(widget.items, _mode, facebook: _mode.hasPost && _facebook),
+        steps: buildPlan(widget.items, _mode),
         fit: _fit,
         keepStoriesForPosts: _mode == PublishMode.story && _keepStoriesForPosts,
       ),
@@ -173,21 +172,6 @@ class _PublishSheetState extends State<_PublishSheet> {
               ),
               _Note(icon: Icons.info_outline_rounded, text: '${_fit.detail}. Stories always show the whole photo.'),
             ],
-            if (_mode.hasPost)
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _facebook,
-                onChanged: widget.apps.facebook ? (v) => setState(() => _facebook = v) : null,
-                title: const Text('Also Open Facebook For The Post', style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(
-                  !widget.apps.facebook
-                      ? 'The Facebook app isn\'t installed.'
-                      : social.instagramSharesToFacebook
-                      ? 'Not needed: Instagram already shares your posts to Facebook.'
-                      : 'Only needed if Instagram doesn\'t share to Facebook by itself.',
-                  style: TextStyle(fontSize: 12, color: muted),
-                ),
-              ),
             _Note(
               icon: Icons.notes_rounded,
               text: caption.isEmpty
@@ -207,7 +191,7 @@ class _PublishSheetState extends State<_PublishSheet> {
                   ],
                 ),
               )
-            else if (widget.apps.instagram)
+            else if (widget.instagram)
               FilledButton.icon(
                 onPressed: _start,
                 icon: const Icon(Icons.send_rounded),
@@ -689,7 +673,6 @@ class _PublishScreenState extends State<PublishScreen> {
     final supporting = [
       if (later > 0) '$later left in Uploads for later',
       if (s.keepStoriesForPosts) 'Story copies are in Saved For Posts',
-      if (_scope.social.instagramSharesToFacebook) 'Also shared to Facebook',
     ].join(' · ');
     return SafeArea(
       child: Column(

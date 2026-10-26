@@ -6,7 +6,6 @@ import '../prefetch.dart';
 import '../sharing.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
-import '../turn.dart';
 import '../widgets.dart';
 import 'editor_screen.dart';
 
@@ -337,10 +336,7 @@ class _ZoomablePhotoState extends State<_ZoomablePhoto> with SingleTickerProvide
       maxScale: 5,
       child: Hero(
         tag: 'shot-${widget.shot.id}',
-        child: Upright(
-          file: widget.shot.primary,
-          child: CardImage(file: widget.shot.primary, maxEdge: _viewerEdge, fit: BoxFit.contain),
-        ),
+        child: CardImage(file: widget.shot.primary, maxEdge: _viewerEdge, fit: BoxFit.contain),
       ),
     ),
   );

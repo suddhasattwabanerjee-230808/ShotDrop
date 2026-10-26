@@ -23,10 +23,10 @@ class CardChannel {
   Stream<void> get volumeChanges => _events.receiveBroadcastStream().map((_) {});
 
   /// Opens the system folder picker (on the plugged-in card's DCIM folder,
-  /// if there is one). Returns the chosen folder with persistent read/write access.
+  /// if there is one). Returns the chosen folder with persistent read access.
   Future<String?> pickFolder() => _m.invokeMethod<String>('pickFolder');
 
-  /// A folder picked before (read/write permission kept) that's available now:
+  /// A folder picked before (permission kept) that's readable right now:
   /// the card it's on is plugged in. DCIM folders on cards first.
   Future<String?> findCard() => _m.invokeMethod<String>('findCard');
 
@@ -60,13 +60,13 @@ class CardChannel {
   /// [fast] reads only the camera's tiny built-in thumbnail (instant, blurry).
   Future<String?> thumbnail(CardFile file, {required int maxEdge, bool fast = false}) => _m.invokeMethod<String>(
     'thumbnail',
-    {'uri': file.uri, 'key': '${file.docId}|${file.modified}|${file.size}|${file.sourceRotated}', 'maxEdge': maxEdge, 'fast': fast},
+    {'uri': file.uri, 'key': '${file.docId}|${file.modified}|${file.size}', 'maxEdge': maxEdge, 'fast': fast},
   );
 
-  /// Copies the card JPEG to [dest] as an upright JPEG, at most [maxEdge] px,
-  /// then [turn] quarter turns clockwise (a person lying sideways, see FaceIndex).
-  Future<void> importSource(CardFile file, String dest, {int maxEdge = 4000, int turn = 0}) =>
-      _m.invokeMethod('importSource', {'uri': file.uri, 'dest': dest, 'maxEdge': maxEdge, 'turn': turn});
+  /// Copies the card JPEG to [dest] at most [maxEdge] px, respecting the
+  /// source file's own EXIF orientation.
+  Future<void> importSource(CardFile file, String dest, {int maxEdge = 4000}) =>
+      _m.invokeMethod('importSource', {'uri': file.uri, 'dest': dest, 'maxEdge': maxEdge});
 
   /// Writes raw RGBA pixels to [dest] as a JPEG.
   Future<void> encodeJpeg(Uint8List rgba, int width, int height, String dest, {int quality = 92}) =>

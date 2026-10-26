@@ -9,7 +9,6 @@ import '../sharing.dart';
 import '../stores.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
-import '../turn.dart';
 import '../widgets.dart';
 import 'date_filter_sheet.dart';
 import 'editor_screen.dart';
@@ -23,7 +22,7 @@ enum Gallery { card, phone }
 /// the phone (the Phone Gallery), newest first, by day. Tap to view,
 /// long-press to pick several, then share them, add them to Selected or edit
 /// them straight into the Upload folder. ♡ marks the ones in Selected. Card
-/// photos are shown turned 90° left (see turnOf).
+/// card photos use their source orientation.
 class GridScreen extends StatefulWidget {
   const GridScreen({super.key, this.gallery = Gallery.card});
   final Gallery gallery;
@@ -585,10 +584,7 @@ class _Tile extends StatelessWidget {
                   : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(selected ? 18 : 14),
-                child: Upright(
-                  file: shot.primary,
-                  child: CardImage(file: shot.primary, maxEdge: 360),
-                ),
+                child: CardImage(file: shot.primary, maxEdge: 360),
               ),
             ),
           ),

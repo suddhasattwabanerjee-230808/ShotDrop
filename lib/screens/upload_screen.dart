@@ -16,8 +16,8 @@ import 'home_shell.dart';
 
 /// The Upload folder (a tab): edited photos going out next, in posting order
 /// (drag to reorder, swipe back to Selected, tap or Edit to edit again), the
-/// caption, and the way out to Instagram. Only the ticked photos are
-/// published; unticked photos stay here for later.
+/// caption, and the way out to Instagram. The Saved For Posts tab lets you
+/// choose which saved story photos to post while the rest stay there.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
 
@@ -32,8 +32,10 @@ class _UploadScreenState extends State<UploadScreen> {
   final _skipped = <String>{}; // shotIds unticked: they stay here for later
   bool _storiesSection = false;
 
+  List<UploadItem> get _active => _storiesSection ? _uploads.storyLater : _uploads.queued;
+
   List<UploadItem> get _picked => [
-    for (final i in _uploads.queued)
+    for (final i in _active)
       if (!_skipped.contains(i.shotId)) i,
   ];
 
@@ -157,11 +159,11 @@ class _UploadScreenState extends State<UploadScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'}${_storiesSection ? ' · STORIES' : ' · $picked SELECTED'}',
+                          '${items.length} ${items.length == 1 ? 'PHOTO' : 'PHOTOS'} · ${_storiesSection ? 'SAVED FOR POSTS' : 'UPLOADS'} · $picked SELECTED',
                           style: sectionLabel,
                         ),
                       ),
-                      if (!_storiesSection) TextButton(
+                      TextButton(
                         onPressed: () => setState(() {
                           all ? _skipped.addAll(items.map((i) => i.shotId)) : _skipped.clear();
                         }),
@@ -246,9 +248,9 @@ class _UploadScreenState extends State<UploadScreen> {
       bottomNavigationBar: ListenableBuilder(
         listenable: uploads,
         builder: (context, _) {
-          final active = _storiesSection ? uploads.storyLater : uploads.queued;
+          final active = _active;
           if (active.isEmpty) return const SizedBox.shrink();
-          final picked = _picked, n = _storiesSection ? uploads.storyLater.length : picked.length, left = uploads.queued.length - n;
+          final picked = _picked, n = picked.length, left = active.length - n;
           return SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -256,11 +258,11 @@ class _UploadScreenState extends State<UploadScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!_storiesSection && left > 0 && n > 0)
+                  if (left > 0)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        '$left unselected ${left == 1 ? 'photo stays' : 'photos stay'} in Uploads',
+                        '$left unselected ${left == 1 ? 'photo stays' : 'photos stay'} in ${_storiesSection ? 'Saved For Posts' : 'Uploads'}',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                       ),
@@ -268,8 +270,7 @@ class _UploadScreenState extends State<UploadScreen> {
                   FilledButton.icon(
                     onPressed: n == 0 ? null : () async {
                             if (_storiesSection) {
-                              final later = [...uploads.storyLater];
-                              await showPublishSheet(context, later, initialMode: PublishMode.post, postOnly: true);
+                              await showPublishSheet(context, picked, initialMode: PublishMode.post, postOnly: true);
                               return;
                             }
                             _saveCaption?.cancel();
@@ -277,7 +278,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             if (context.mounted) await showPublishSheet(context, picked);
                           },
                     icon: Icon(_storiesSection ? Icons.grid_on_rounded : Icons.send_rounded),
-                    label: Text(_storiesSection ? 'Post Saved Photos' : n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
+                    label: Text(_storiesSection ? 'Post $n Saved ${n == 1 ? 'Photo' : 'Photos'}' : n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
                   ),
                 ],
               ),
@@ -333,12 +334,12 @@ class _UploadRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onEdit,
+        onTap: storyLater ? null : onEdit,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
           child: Row(
             children: [
-              if (!storyLater) IconButton(
+              IconButton(
                 tooltip: picked ? 'Leave For Later' : 'Publish This One',
                 onPressed: onPick,
                 icon: AnimatedSwitcher(
@@ -390,10 +391,7 @@ class _UploadRow extends StatelessWidget {
                 ),
               ),
               if (storyLater)
-                ...[
-                  IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink)),
-                  if (item.edited) IconButton(tooltip: 'Revert To Original', onPressed: onRevert, icon: Icon(Icons.restart_alt_rounded, color: muted)),
-                ]
+                IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink))
               else ...[
                 IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink)),
                 if (item.edited) IconButton(tooltip: 'Revert To Original', onPressed: onRevert, icon: Icon(Icons.restart_alt_rounded, color: muted)),

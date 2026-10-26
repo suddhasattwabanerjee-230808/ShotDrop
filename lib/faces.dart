@@ -13,14 +13,13 @@ import 'package:path_provider/path_provider.dart';
 import 'app_channel.dart';
 import 'models.dart';
 import 'stores.dart' show ShotSource;
-import 'turn.dart';
 
 /// One face in a photo.
 class Face {
   const Face({required this.crop, required this.box, this.embedding});
 
   final String crop; // a small square JPEG of the face, for the People sheet
-  final Rect box; // 0..1 of the photo, as looked at (turned as shown, see turnOf)
+  final Rect box; // 0..1 of the source-oriented photo
   final Float32List? embedding; // 192 numbers, unit length; null when too small to tell who it is
 
   double get size => box.width * box.height;
@@ -105,8 +104,8 @@ class FaceIndex extends ChangeNotifier {
   /// Same person: how alike (cosine) a face must be to a person's average face.
   static const sameness = 0.6;
 
-  /// faces.json's layout. 2: card photos looked at turned left, as they're now shown.
-  static const _version = 2;
+  /// faces.json's layout. 3: card photos use their source orientation.
+  static const _version = 3;
 
   /// A photo taking longer than this is given up on (for this session), so one can't hold up the rest.
   static const _scanLimit = Duration(seconds: 45);
@@ -215,9 +214,7 @@ class FaceIndex extends ChangeNotifier {
     final key = keyOf(file);
     return _scanning[key] ??= () async {
       try {
-        final r = await _m
-            .invokeMapMethod<String, Object?>('scan', {'uri': file.uri, 'key': key, 'turn': turnOf(file)})
-            .timeout(_scanLimit);
+        final r = await _m.invokeMapMethod<String, Object?>('scan', {'uri': file.uri, 'key': key}).timeout(_scanLimit);
         final found = PhotoFaces(
           faces: [for (final f in (r?['faces'] as List?) ?? const []) Face.fromMap(f as Map<Object?, Object?>)],
         );

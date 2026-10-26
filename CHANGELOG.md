@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.8] - 2026-10-27 (build 25)
+
+Keep card sources unchanged and give control over saved story posts.
+
+- **Remove ShotDrop's automatic counterclockwise card rotation.** Card files are read-only again; any rotation is made in the editor.
+- **Choose which Saved For Posts photos to publish.** Unselected photos remain in Saved For Posts.
+- **Saved For Posts photos no longer open the editor when tapped.** Use the selection control to choose photos for posting.
+- **Remove Facebook posting toggles** from setup and publishing.
+
 ## [0.8.7] - 2026-10-27 (build 24)
 
 Review and optionally save photos after posting.
