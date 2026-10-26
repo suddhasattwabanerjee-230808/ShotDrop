@@ -11,6 +11,7 @@ class CardFile {
     required this.name,
     required this.size,
     required this.modified,
+    this.sourceRotated = false,
   });
 
   final String uri; // content:// document uri, readable through the card channel
@@ -18,6 +19,7 @@ class CardFile {
   final String name;
   final int size;
   final int modified; // ms since epoch; the camera writes the capture time here
+  final bool sourceRotated; // the card JPEG's EXIF orientation already turns it left
 
   factory CardFile.fromMap(Map<Object?, Object?> m) => CardFile(
     uri: m['uri'] as String,
@@ -25,6 +27,7 @@ class CardFile {
     name: m['name'] as String,
     size: (m['size'] as num?)?.toInt() ?? 0,
     modified: (m['modified'] as num?)?.toInt() ?? 0,
+    sourceRotated: m['sourceRotated'] == true,
   );
 
   /// From the phone's own gallery (PhoneStore), not the card.

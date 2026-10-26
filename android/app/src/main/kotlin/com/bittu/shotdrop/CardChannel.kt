@@ -46,6 +46,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     private val methods = MethodChannel(messenger, "shotdrop/card")
     private val events = EventChannel(messenger, "shotdrop/card/events")
     private val main = Handler(Looper.getMainLooper())
+    private val cardOrientationPrefs by lazy { activity.getSharedPreferences("card_orientation", Context.MODE_PRIVATE) }
 
     // Card reads are slow (USB 2 over OTG), so a few at a time, newest request first: the
     // photos on screen now load before the ones scrolled past. Listing gets its own thread.
@@ -196,7 +197,11 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
                 Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
             }
         ).apply {
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+            )
         }
         activity.startActivityForResult(intent, PICK_FOLDER)
     }
@@ -207,13 +212,13 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     }
 
     /**
-     * A folder picked before (its permission is kept) that can be read now,
+     * A folder picked before (its permission is kept) that can be read and written now,
      * because its card is plugged in: so each card only has to be picked
      * once, ever. Folders on cards, and DCIM folders, come first.
      */
     private fun findCard(): String? {
         val trees = activity.contentResolver.persistedUriPermissions
-            .filter { it.isReadPermission }
+            .filter { it.isReadPermission && it.isWritePermission }
             .mapNotNull { p -> runCatching { p.uri to DocumentsContract.getTreeDocumentId(p.uri) }.getOrNull() }
             .sortedBy { (_, id) -> (if (id.startsWith("primary:")) 2 else 0) + (if (id.contains("DCIM", true)) 0 else 1) }
         return trees.firstOrNull { (uri, _) -> access(uri) == "ok" }?.first?.toString()
@@ -228,8 +233,19 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
             result.success(null)
             return true
         }
-        runCatching {
-            activity.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val granted = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        if (
+            (granted and Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0 ||
+                (granted and Intent.FLAG_GRANT_WRITE_URI_PERMISSION) == 0
+        ) {
+            result.error("card_write", "ShotDrop needs read and write access to rotate the card JPEG orientation safely.", null)
+            return true
+        }
+        try {
+            activity.contentResolver.takePersistableUriPermission(uri, granted)
+        } catch (e: Exception) {
+            result.error("card_write", e.message ?: "Android could not keep write access to this card folder.", null)
+            return true
         }
         result.success(uri.toString())
         return true
@@ -237,7 +253,7 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
 
     /** "ok", "noPermission" (folder forgotten) or "missing" (card not plugged in). */
     private fun access(tree: Uri): String {
-        val granted = activity.contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission }
+        val granted = activity.contentResolver.persistedUriPermissions.any { it.uri == tree && it.isReadPermission && it.isWritePermission }
         if (!granted) return "noPermission"
         val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         return try {
@@ -251,12 +267,13 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
     // --- Listing --------------------------------------------------------------
 
     private fun list(tree: Uri): List<Map<String, Any?>> {
-        val out = ArrayList<Map<String, Any?>>()
+        val out = ArrayList<MutableMap<String, Any?>>()
         walk(tree, DocumentsContract.getTreeDocumentId(tree), 0, out)
+        out.forEach(::rotateJpegMetadataIfNeeded)
         return out
     }
 
-    private fun walk(tree: Uri, parentId: String, depth: Int, out: MutableList<Map<String, Any?>>) {
+    private fun walk(tree: Uri, parentId: String, depth: Int, out: MutableList<MutableMap<String, Any?>>) {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
         val columns = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -278,16 +295,64 @@ class CardChannel(private val activity: Activity, messenger: BinaryMessenger) : 
                 val ext = name.substringAfterLast('.', "").uppercase()
                 if (ext !in PHOTO_EXTENSIONS) continue
                 out.add(
-                    mapOf(
+                    mutableMapOf<String, Any?>(
                         "uri" to DocumentsContract.buildDocumentUriUsingTree(tree, id).toString(),
                         "docId" to id,
                         "name" to name,
                         "size" to c.getLong(3),
                         "modified" to c.getLong(4),
+                        "sourceRotated" to false,
                     ),
                 )
             }
         }
+    }
+
+    /** Set JPEG EXIF orientation to 90° counterclockwise without changing image pixels. */
+    private fun rotateJpegMetadataIfNeeded(photo: MutableMap<String, Any?>) {
+        val name = photo["name"] as? String ?: return
+        if (name.substringAfterLast('.', "").uppercase() !in setOf("JPG", "JPEG")) return
+        val uri = Uri.parse(photo["uri"] as String)
+        val docId = photo["docId"] as String
+        val modified = photo["modified"] as Long
+        val size = photo["size"] as Long
+        val prefKey = "photo_${sha1(docId)}"
+        val previous = cardOrientationPrefs.getString(prefKey, null)?.split('|')
+        val previousOriginal = previous?.getOrNull(0)?.toLongOrNull()
+        val previousModified = previous?.getOrNull(1)?.toLongOrNull()
+        val previousSize = previous?.getOrNull(2)?.toLongOrNull()
+        val samePhoto = previousOriginal != null && previousModified == modified && previousSize == size
+
+        val pfd = activity.contentResolver.openFileDescriptor(uri, "rw")
+            ?: throw IllegalStateException("Couldn't open $name for updating its orientation")
+        pfd.use {
+            val exif = ExifInterface(it.fileDescriptor)
+            if (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) != ExifInterface.ORIENTATION_ROTATE_270) {
+                exif.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_270.toString())
+                exif.saveAttributes()
+            }
+        }
+
+        val stat = activity.contentResolver.query(
+            uri,
+            arrayOf(DocumentsContract.Document.COLUMN_SIZE, DocumentsContract.Document.COLUMN_LAST_MODIFIED),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getLong(1) to cursor.getLong(0) else null
+        }
+        val afterModified = stat?.first ?: modified
+        val afterSize = stat?.second ?: size
+        val originalModified = if (samePhoto) previousOriginal!! else modified
+        cardOrientationPrefs.edit()
+            .putString(prefKey, "$originalModified|$afterModified|$afterSize")
+            .apply()
+
+        // Keep ShotDrop's stable photo identity even though SAF may update the file timestamp.
+        photo["modified"] = originalModified
+        photo["size"] = afterSize
+        photo["sourceRotated"] = true
     }
 
     // --- The phone's own gallery ------------------------------------------------

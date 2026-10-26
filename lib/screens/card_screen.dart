@@ -77,8 +77,8 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
           iconWidget: const _PulsingIcon(icon: Icons.sd_card_rounded),
           title: 'Card Found',
           body:
-              'Android asks once per card before an app can read it. Tap below, then "Use this folder" and "Allow": '
-              'the card\'s DCIM folder is already open. Next time this card opens by itself.',
+              'Android asks once per card for access to the photos. ShotDrop sets each JPEG\'s orientation to 90° counterclockwise; '
+              'the image pixels stay unchanged. Tap below, then "Use this folder" and "Allow". Next time this card opens by itself.',
           actions: [
             FilledButton.icon(
               onPressed: () => _pick(context),

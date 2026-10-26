@@ -57,7 +57,7 @@ class ThumbCache {
     _paths.clear();
   }
 
-  static String _key(CardFile file, int maxEdge, bool fast) => '${file.docId}|${file.modified}|$maxEdge|$fast';
+  static String _key(CardFile file, int maxEdge, bool fast) => '${file.docId}|${file.modified}|${file.size}|${file.sourceRotated}|$maxEdge|$fast';
 
   /// The thumbnail's path if it's already made (no waiting), else null.
   static String? ready(CardFile file, {required int maxEdge, bool fast = false}) => _made[_key(file, maxEdge, fast)];

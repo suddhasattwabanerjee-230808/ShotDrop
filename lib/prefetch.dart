@@ -13,7 +13,7 @@ import 'turn.dart';
 class SourcePrefetch {
   static final _jobs = <String, Future<String?>>{};
 
-  static String _key(CardFile f) => '${f.docId}|${f.modified}|${f.size}';
+  static String _key(CardFile f) => '${f.docId}|${f.modified}|${f.size}|${f.sourceRotated}';
 
   /// Starts copying [file] (once).
   static void warm(CardFile file) {

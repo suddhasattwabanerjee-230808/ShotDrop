@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.6] - 2026-10-26 (build 23)
+
+Rotate card JPEGs from their source metadata.
+
+- **Card JPEGs are set to 90° counterclockwise on first scan.** ShotDrop requests persistent read/write access; the image pixels remain unchanged, and repeat scans do not rotate them again.
+- **Keep card photo identities stable** when Android updates a JPEG's modified time during the metadata change. RAW-only files are left untouched and still display rotated in ShotDrop.
+
 ## [0.8.5] - 2026-10-26 (build 22)
 
 Keep uploads intact while correcting edited photos in Selected.
