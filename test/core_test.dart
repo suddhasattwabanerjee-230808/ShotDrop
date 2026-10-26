@@ -695,7 +695,7 @@ void main() {
       expect(b.byShot('C')!.params.filter, 'mono');
     });
 
-    test('after publishing, posted photos are marked and the rest go back to Selected', () async {
+    test('after publishing, posted photos are marked and unselected photos stay in Uploads', () async {
       final s = UploadStore(dir: dir);
       await s.put(item('A'));
       await s.put(item('B'));
@@ -705,11 +705,11 @@ void main() {
       expect(s.caption, 'hi');
       await s.finishPublishing(['A']);
       expect(s.isPublished('A'), isTrue);
-      expect(s.queued, isEmpty);
+      expect(s.queued.map((i) => i.shotId), ['B']);
       expect(s.session, isNull);
-      expect(s.isSelected('B'), isTrue);
-      expect(s.byShot('B')!.edited, isTrue); // keeps its edit for later
-      expect(s.caption, '');
+      expect(s.isSelected('B'), isFalse);
+      expect(s.byShot('B')!.edited, isTrue); // keeps its edit in Uploads
+      expect(s.caption, 'hi');
     });
 
     test('photos left for later stay in the Upload folder, with the caption', () async {
@@ -721,8 +721,8 @@ void main() {
       await s.finishPublishing(['A'], later: ['B']);
       expect(s.isPublished('A'), isTrue);
       expect(s.byShot('A')!.postedAt, isNotNull);
-      expect(s.queued.map((i) => i.shotId), ['B']); // left for later
-      expect(s.isSelected('C'), isTrue); // wasn't ticked: back to Selected
+      expect(s.isSelected('C'), isFalse); // wasn't ticked: stays in Uploads
+      expect(s.queued.map((i) => i.shotId), ['B', 'C']);
       expect(s.caption, 'hi');
     });
 

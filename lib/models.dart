@@ -259,6 +259,7 @@ class UploadItem {
     required this.name,
     required this.taken,
     required this.sourcePath,
+    this.originShotId,
     this.exportPath,
     this.params = const EditParams(),
     this.galleryUri,
@@ -269,6 +270,7 @@ class UploadItem {
   });
 
   final String shotId; // CardShot.id, so the grid can mark it
+  final String? originShotId; // CardShot.id when this is a separate Upload copy
   final String name; // DSC_0123
   final DateTime taken;
   final String sourcePath; // upright, untouched copy of the card JPEG
@@ -299,6 +301,7 @@ class UploadItem {
     name: name,
     taken: taken,
     sourcePath: sourcePath,
+    originShotId: originShotId,
     exportPath: exportPath ?? this.exportPath,
     params: params ?? this.params,
     galleryUri: galleryUri ?? this.galleryUri,
@@ -313,6 +316,7 @@ class UploadItem {
     'name': name,
     'taken': taken.millisecondsSinceEpoch,
     'sourcePath': sourcePath,
+    if (originShotId != null) 'originShotId': originShotId,
     'exportPath': exportPath,
     'params': params.toJson(),
     'galleryUri': galleryUri,
@@ -327,6 +331,7 @@ class UploadItem {
     name: j['name'] as String,
     taken: DateTime.fromMillisecondsSinceEpoch((j['taken'] as num).toInt()),
     sourcePath: j['sourcePath'] as String,
+    originShotId: j['originShotId'] as String?,
     exportPath: j['exportPath'] as String?,
     params: EditParams.fromJson((j['params'] as Map).cast<String, Object?>()),
     galleryUri: j['galleryUri'] as String?,

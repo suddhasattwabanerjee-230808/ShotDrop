@@ -257,6 +257,7 @@ class UploadStore extends ChangeNotifier {
   String caption = '';
   int copying = 0; // photos still being copied off the card into Selected
   PublishSession? session; // a round of publishing still waiting on "Did It Post?"
+  bool _editedSelectedCorrectionDone = false;
 
   Future<Directory> get dir async => _dir ??= await getApplicationSupportDirectory();
   Future<File> get _file async => File('${(await dir).path}/upload_queue.json');
@@ -278,9 +279,9 @@ class UploadStore extends ChangeNotifier {
   /// Selected, most recently added first.
   List<UploadItem> get selected => _with(ItemStatus.selected).reversed.toList();
 
-  bool contains(String shotId) => items.any((i) => i.shotId == shotId && i.status == ItemStatus.queued);
+  bool contains(String shotId) => items.any((i) => (i.shotId == shotId || i.originShotId == shotId) && i.status == ItemStatus.queued);
   bool isSelected(String shotId) => items.any((i) => i.shotId == shotId && i.status == ItemStatus.selected);
-  bool isPublished(String shotId) => items.any((i) => i.shotId == shotId && i.published);
+  bool isPublished(String shotId) => items.any((i) => (i.shotId == shotId || i.originShotId == shotId) && i.published);
   UploadItem? byShot(String shotId) {
     for (final i in items) {
       if (i.shotId == shotId) return i;
@@ -297,6 +298,8 @@ class UploadStore extends ChangeNotifier {
       caption = j['caption'] as String? ?? '';
       final sj = j['session'];
       session = sj is Map ? PublishSession.fromJson(sj.cast<String, Object?>(), byShot) : null;
+      _editedSelectedCorrectionDone = j['editedSelectedCorrectionDone'] == true;
+      await _correctEditedSelectedOnce();
       notifyListeners();
     } catch (e) {
       debugPrint('Upload folder unreadable, starting empty: $e');
@@ -312,10 +315,43 @@ class UploadStore extends ChangeNotifier {
         'items': [for (final i in items) i.toJson()],
         'caption': caption,
         'session': ?session?.toJson(),
+        'editedSelectedCorrectionDone': _editedSelectedCorrectionDone,
       }),
     );
     await tmp.rename(f.path);
   }
+
+  /// One-time repair: retain each edited Selected item and add its edited copy
+  /// to Uploads, sharing the kept files until either item no longer needs them.
+  Future<void> _correctEditedSelectedOnce() async {
+    if (_editedSelectedCorrectionDone) return;
+    final edited = [for (final item in items) if (item.status == ItemStatus.selected && item.edited) item];
+    for (final item in edited) {
+      final copyId = '${item.shotId}_edited_upload';
+      if (items.any((i) => i.shotId == copyId)) continue;
+      items = [
+        ...items,
+        UploadItem(
+          shotId: copyId,
+          originShotId: item.originShotId ?? item.shotId,
+          name: item.name,
+          taken: item.taken,
+          sourcePath: item.sourcePath,
+          exportPath: item.exportPath,
+          params: item.params,
+          status: ItemStatus.queued,
+          width: item.width,
+          height: item.height,
+        ),
+      ];
+    }
+    _editedSelectedCorrectionDone = true;
+    await _save();
+  }
+
+  bool _fileUsedElsewhere(String path, String shotId) => items.any(
+    (i) => i.shotId != shotId && (i.sourcePath == path || i.exportPath == path),
+  );
 
   /// Adds card [shots] to Selected, copying each off the card first (so they
   /// stay when it's unplugged). Ones already in Selected or the Upload folder
@@ -373,9 +409,11 @@ class UploadStore extends ChangeNotifier {
     } else {
       final old = items[i];
       final oldExport = old.exportPath;
-      if (oldExport != null && oldExport != item.exportPath) _deleteQuietly(oldExport);
       // Edited out of Selected: it joins the end of the posting order.
       items = old.status == item.status ? ([...items]..[i] = item) : [...items..removeAt(i), item];
+      if (oldExport != null && oldExport != item.exportPath && !_fileUsedElsewhere(oldExport, item.shotId)) {
+        _deleteQuietly(oldExport);
+      }
     }
     notifyListeners();
     await _save();
@@ -411,8 +449,8 @@ class UploadStore extends ChangeNotifier {
   void purge(UploadItem item) {
     if (byShot(item.shotId) != null) return;
     final export = item.exportPath;
-    if (export != null) _deleteQuietly(export);
-    _deleteQuietly(item.sourcePath);
+    if (export != null && !_fileUsedElsewhere(export, item.shotId)) _deleteQuietly(export);
+    if (!_fileUsedElsewhere(item.sourcePath, item.shotId)) _deleteQuietly(item.sourcePath);
     final g = item.galleryUri;
     if (g != null) CardChannel.instance.deleteFromGallery(g).catchError((Object _) {});
   }
@@ -441,11 +479,10 @@ class UploadStore extends ChangeNotifier {
 
   /// After a round of publishing: [posted] photos are marked posted (the grid
   /// shows POSTED; their gallery copies stay in Pictures/ShotDrop).
-  /// Photos left for [later] stay in the Upload folder, with the caption;
-  /// whatever else was there goes back to Selected, with its edit. Nothing
-  /// moves if nothing was posted.
+  /// Photos left for [later] and photos not included in this round stay in the
+  /// Upload folder. Nothing moves if nothing was posted.
   Future<void> finishPublishing(Iterable<String> posted, {Iterable<String> later = const [], bool keepStoriesForPosts = false}) async {
-    final ids = posted.toSet(), keep = later.toSet();
+    final ids = posted.toSet();
     session = null;
     if (ids.isNotEmpty) {
       final now = DateTime.now();
@@ -453,8 +490,6 @@ class UploadStore extends ChangeNotifier {
         for (final i in items)
           ids.contains(i.shotId)
               ? i.copyWith(status: keepStoriesForPosts ? ItemStatus.storyLater : ItemStatus.published, postedAt: now)
-              : i.status == ItemStatus.queued && !keep.contains(i.shotId)
-              ? i.copyWith(status: ItemStatus.selected)
               : i,
       ];
       if (queued.isEmpty) caption = '';
@@ -488,7 +523,7 @@ class UploadStore extends ChangeNotifier {
         if (at == null || at.isAfter(before)) continue;
       }
       for (final f in files) {
-        freed += await deleteFile(f);
+        if (!_fileUsedElsewhere(f.path, i.shotId)) freed += await deleteFile(f);
       }
     }
     return freed;

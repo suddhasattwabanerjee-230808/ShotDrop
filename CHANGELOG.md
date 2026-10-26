@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5] - 2026-10-26 (build 22)
+
+Keep uploads intact while correcting edited photos in Selected.
+
+- **One-time repair for edited Selected photos.** Each edited photo stays in Selected and gets a separate entry in Uploads.
+- **Unselected uploads stay in Uploads** after publishing a story or post. Only photos marked as posted move to Published or Saved For Posts.
+
 ## [0.8.4] - 2026-10-26 (build 21)
 
 Revert edits in place and save gallery copies to ShotDrop.

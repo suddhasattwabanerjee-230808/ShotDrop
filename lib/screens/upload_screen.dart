@@ -17,7 +17,7 @@ import 'home_shell.dart';
 /// The Upload folder (a tab): edited photos going out next, in posting order
 /// (drag to reorder, swipe back to Selected, tap or Edit to edit again), the
 /// caption, and the way out to Instagram. Only the ticked photos are
-/// published; once some are posted, the rest go back to Selected for later.
+/// published; unticked photos stay here for later.
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key});
 
@@ -260,7 +260,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        '$left unselected ${left == 1 ? 'photo goes' : 'photos go'} back to Selected once you\'ve posted',
+                        '$left unselected ${left == 1 ? 'photo stays' : 'photos stay'} in Uploads',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 12, color: muted, fontWeight: FontWeight.w600),
                       ),
