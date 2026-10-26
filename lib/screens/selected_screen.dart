@@ -93,6 +93,28 @@ class _SelectedScreenState extends State<SelectedScreen> {
     }
   }
 
+  Future<void> _revertOriginal(UploadItem item) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revert To Original?'),
+        content: Text('${item.name} will return to the original photo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Revert')),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await AppScope.of(context).uploads.revertToOriginal(
+      shotId: item.shotId,
+      name: item.name,
+      taken: item.taken,
+      sourcePath: item.sourcePath,
+    );
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reverted To Original')));
+  }
+
   void _toggle(UploadItem i) {
     HapticFeedback.selectionClick();
     setState(() => _picked.contains(i.shotId) ? _picked.remove(i.shotId) : _picked.add(i.shotId));
@@ -210,6 +232,7 @@ class _SelectedScreenState extends State<SelectedScreen> {
                           picked: _picked.contains(item.shotId),
                           onTap: () => _picking ? _toggle(item) : _edit([item]),
                           onLongPress: () => _toggle(item),
+                          onRevert: () => _revertOriginal(item),
                         );
                       }),
                     ),
@@ -261,11 +284,13 @@ class _Tile extends StatelessWidget {
     required this.picked,
     required this.onTap,
     required this.onLongPress,
+    required this.onRevert,
   });
 
   final UploadItem item;
   final bool picking, picked;
   final VoidCallback onTap, onLongPress;
+  final VoidCallback onRevert;
 
   @override
   Widget build(BuildContext context) => GestureDetector(
@@ -294,6 +319,22 @@ class _Tile extends StatelessWidget {
             left: 6,
             bottom: 6,
             child: PhotoBadge(label: 'EDITED', icon: Icons.auto_fix_high_rounded, color: Color(0xE68B5CF6)),
+          ),
+        if (item.edited && !picking)
+          Positioned(
+            right: 5,
+            top: 5,
+            child: Material(
+              color: Colors.black54,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Revert To Original',
+                onPressed: onRevert,
+                icon: const Icon(Icons.restart_alt_rounded, color: Colors.white, size: 18),
+                constraints: const BoxConstraints.tightFor(width: 34, height: 34),
+                padding: EdgeInsets.zero,
+              ),
+            ),
           ),
         if (picking)
           Positioned(

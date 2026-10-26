@@ -80,7 +80,7 @@ Future<int> savePathsToGallery(BuildContext context, List<String> paths, List<St
   var saved = 0;
   for (var i = 0; i < paths.length; i++) {
     try {
-      final uri = await CardChannel.instance.saveToGallery(paths[i], names[i], album: 'ShotDrop/Upload');
+      final uri = await CardChannel.instance.saveToGallery(paths[i], names[i], album: 'short');
       if (uri != null) saved++;
     } catch (_) {}
   }

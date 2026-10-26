@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.3] - 2026-10-26 (build 20)
+
+Saved story photos, stronger blur, and a true revert action.
+
+- **Uploads and Saved For Posts are separate tabs.** Story-only uploads are saved for a later post by default; the later publish flow only offers Post.
+- **Revert To Original** returns an edited photo to Selected with its untouched source copy.
+- **Blur selected areas strongly.** The selected region is blurred in the preview and saved photo, without replacing it with another area.
+- **Gallery copies use Pictures/short**, without an app-name folder.
+
 ## [0.8.2] - 2026-10-26 (build 19)
 
 More control over edits, gallery copies, and story-only posts.

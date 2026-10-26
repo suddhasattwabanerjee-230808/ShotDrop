@@ -73,7 +73,7 @@ class CardChannel {
       _m.invokeMethod('encodeJpeg', {'rgba': rgba, 'width': width, 'height': height, 'dest': dest, 'quality': quality});
 
   /// Puts a copy of [path] in the phone gallery under Pictures/[album]. Returns its uri.
-  Future<String?> saveToGallery(String path, String name, {String album = 'ShotDrop/Upload'}) =>
+  Future<String?> saveToGallery(String path, String name, {String album = 'short'}) =>
       _m.invokeMethod<String>('saveToGallery', {'path': path, 'name': name, 'album': album});
 
   Future<void> deleteFromGallery(String uri) => _m.invokeMethod('deleteFromGallery', {'uri': uri});

@@ -92,6 +92,28 @@ class _UploadScreenState extends State<UploadScreen> {
     [for (final i in items) '${i.name}_edit'],
   ).then((_) {});
 
+  Future<void> _revertOriginal(UploadItem item) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Revert To Original?'),
+        content: Text('${item.name} will return to Selected with its original photo.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Revert')),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await AppScope.of(context).uploads.revertToOriginal(
+      shotId: item.shotId,
+      name: item.name,
+      taken: item.taken,
+      sourcePath: item.sourcePath,
+    );
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Original Photo Moved To Selected')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final uploads = AppScope.of(context).uploads;
@@ -107,9 +129,9 @@ class _UploadScreenState extends State<UploadScreen> {
               padding: const EdgeInsets.only(bottom: navBarClearance),
               child: StatePanel(
                 icon: _storiesSection ? Icons.amp_stories_rounded : Icons.outbox_rounded,
-                title: _storiesSection ? 'No Stories Saved For Later' : 'Nothing To Post Yet',
+                title: _storiesSection ? 'Nothing Saved For Posts Yet' : 'No Uploads Yet',
                 body: _storiesSection
-                    ? 'Stories you choose to keep after posting appear here. Move one to Posts when you are ready.'
+                    ? 'Story-only photos you keep for later posts appear here.'
                     : 'Edit a photo from the Gallery or from Selected and it lands here, ready for Instagram. Swipe one away to set it aside in Selected.',
                 actions: [
                   if (!_storiesSection)
@@ -122,13 +144,13 @@ class _UploadScreenState extends State<UploadScreen> {
                     OutlinedButton.icon(
                       onPressed: () => setState(() => _storiesSection = false),
                       icon: const Icon(Icons.grid_on_rounded),
-                      label: const Text('Open Posts'),
+                      label: const Text('Open Uploads'),
                     ),
                   if (!_storiesSection && uploads.storyLater.isNotEmpty)
                     OutlinedButton.icon(
                       onPressed: () => setState(() => _storiesSection = true),
                       icon: const Icon(Icons.amp_stories_rounded),
-                      label: const Text('Open Stories'),
+                      label: const Text('Saved For Posts'),
                     ),
                 ],
               ),
@@ -145,8 +167,8 @@ class _UploadScreenState extends State<UploadScreen> {
                     children: [
                       SegmentedButton<bool>(
                         segments: const [
-                          ButtonSegment(value: false, label: Text('Posts'), icon: Icon(Icons.grid_on_rounded)),
-                          ButtonSegment(value: true, label: Text('Stories'), icon: Icon(Icons.amp_stories_rounded)),
+                          ButtonSegment(value: false, label: Text('Uploads'), icon: Icon(Icons.outbox_rounded)),
+                          ButtonSegment(value: true, label: Text('Saved For Posts'), icon: Icon(Icons.bookmark_rounded)),
                         ],
                         selected: {_storiesSection},
                         onSelectionChanged: (s) => setState(() { _storiesSection = s.single; _skipped.clear(); }),
@@ -205,8 +227,8 @@ class _UploadScreenState extends State<UploadScreen> {
                         }),
                         onEdit: () => _reEdit(item),
                         onSaveGallery: () => _saveGallery([item]),
+                        onRevert: () => _revertOriginal(item),
                         storyLater: _storiesSection,
-                        onMoveToPosts: () => uploads.move([item.shotId], ItemStatus.queued),
                       ),
                     );
                   },
@@ -267,10 +289,7 @@ class _UploadScreenState extends State<UploadScreen> {
                     onPressed: n == 0 ? null : () async {
                             if (_storiesSection) {
                               final later = [...uploads.storyLater];
-                              await uploads.move(later.map((i) => i.shotId), ItemStatus.queued);
-                              if (!context.mounted) return;
-                              setState(() => _storiesSection = false);
-                              await showPublishSheet(context, later, initialMode: PublishMode.post);
+                              await showPublishSheet(context, later, initialMode: PublishMode.post, postOnly: true);
                               return;
                             }
                             _saveCaption?.cancel();
@@ -278,7 +297,7 @@ class _UploadScreenState extends State<UploadScreen> {
                             if (context.mounted) await showPublishSheet(context, picked);
                           },
                     icon: Icon(_storiesSection ? Icons.grid_on_rounded : Icons.send_rounded),
-                    label: Text(_storiesSection ? 'Post As Posts' : n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
+                    label: Text(_storiesSection ? 'Post Saved Photos' : n == 0 ? 'Select Photos To Publish' : 'Publish $n ${n == 1 ? 'Photo' : 'Photos'}'),
                   ),
                 ],
               ),
@@ -298,14 +317,14 @@ class _UploadRow extends StatelessWidget {
     required this.onPick,
     required this.onEdit,
     required this.onSaveGallery,
+    required this.onRevert,
     required this.storyLater,
-    required this.onMoveToPosts,
   });
   final int index;
   final UploadItem item;
   final bool picked; // ticked for publishing
   final VoidCallback onPick, onEdit;
-  final VoidCallback onSaveGallery, onMoveToPosts;
+  final VoidCallback onSaveGallery, onRevert;
   final bool storyLater;
 
   String get _summary {
@@ -322,7 +341,6 @@ class _UploadRow extends StatelessWidget {
       if (p.legs > 0) 'Slimmer Legs',
       if (p.brightness != 0 || p.contrast != 0 || p.saturation != 0 || p.warmth != 0) 'Adjusted',
       if (p.blurAreas.isNotEmpty) 'Blurred',
-      if (p.retouchPatches.isNotEmpty) 'Objects Removed',
     ];
     return parts.isEmpty ? 'No Changes' : parts.join(' · ');
   }
@@ -394,11 +412,11 @@ class _UploadRow extends StatelessWidget {
               if (storyLater)
                 ...[
                   IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink)),
-                  IconButton(tooltip: 'Move To Posts', onPressed: onMoveToPosts, icon: Icon(Icons.grid_on_rounded, color: accent)),
+                  if (item.edited) IconButton(tooltip: 'Revert To Original', onPressed: onRevert, icon: Icon(Icons.restart_alt_rounded, color: muted)),
                 ]
               else ...[
                 IconButton(tooltip: 'Save To Gallery', onPressed: onSaveGallery, icon: Icon(Icons.download_rounded, color: ink)),
-                IconButton(tooltip: 'Edit Again', onPressed: onEdit, icon: Icon(Icons.edit_rounded, color: ink)),
+                if (item.edited) IconButton(tooltip: 'Revert To Original', onPressed: onRevert, icon: Icon(Icons.restart_alt_rounded, color: muted)),
               ],
               if (!storyLater) ReorderableDragStartListener(
                 index: index,

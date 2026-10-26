@@ -126,7 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
         title: const Text('Free up space from posted photos?'),
         content: const Text(
           'ShotDrop deletes its own copies of photos you\'ve posted. They stay on Instagram, on the card, and in '
-          'Pictures/ShotDrop/Published, and the Gallery still marks them POSTED.',
+          'Pictures/short, and the Gallery still marks them POSTED.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
