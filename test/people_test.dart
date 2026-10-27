@@ -80,11 +80,11 @@ void main() {
 
     test('one box per person, the bigger of two equally sure', () {
       final whole = person(100, 100, 300, 600, 0.95);
-      final part = person(110, 100, 290, 350, 0.95); // a tile's view of the top half
+      final part = person(110, 100, 290, 350, 0.95); // the top half: left to the outlines
       final dup = person(104, 98, 302, 598, 0.9);
       final other = person(500, 100, 650, 600, 0.8);
       final kept = onePerPerson([part, dup, other, whole]);
-      expect(kept, [whole, other]);
+      expect(kept, [whole, part, other]);
     });
   });
 
@@ -128,6 +128,52 @@ void main() {
       expect(at(100, 100), greaterThan(200)); // the body
       expect(at(56, 100), 0); // the neighbour, though in the box
       expect(at(65, 100), lessThan(30)); // background
+    });
+
+    test('a box on the subject\'s own body goes', () {
+      final subject = person(100, 40, 300, 400);
+      final face = person(160, 40, 240, 140);
+      final (people, outlines, stays) = sortOutOverlaps(
+        [subject, face],
+        [solid(const Box(100, 40, 300, 400)), solid(const Box(160, 40, 240, 140))],
+        {0},
+      );
+      expect(people, [subject]);
+      expect(outlines, hasLength(1));
+      expect(stays, {0});
+    });
+
+    test('someone inside the subject\'s box, joined on by an elbow, goes whole', () {
+      const w = 600, h = 400;
+      final subject = person(100, 40, 300, 400);
+      final behind = person(100, 170, 150, 340);
+      // The subject's crop sees both, joined by a thin bridge; plus the subject's own thin arm.
+      const sb = Box(90, 30, 310, 400);
+      final alpha = Uint8List(sb.w * sb.h);
+      void fill(int l, int t, int r, int b) {
+        for (var y = t; y < b; y++) {
+          alpha.fillRange((y - sb.t) * sb.w + l - sb.l, (y - sb.t) * sb.w + r - sb.l, 255);
+        }
+      }
+
+      fill(160, 40, 300, 400); // body
+      fill(130, 100, 160, 110); // arm
+      fill(105, 180, 145, 330); // the one behind
+      fill(145, 250, 160, 254); // elbow
+      final (people, outlines, stays) = sortOutOverlaps(
+        [subject, behind],
+        [Outline(sb, alpha), solid(const Box(105, 180, 145, 330))],
+        {0},
+      );
+      expect(people, [subject, behind]);
+      final m = peopleMasks(people, outlines, stays, w, h);
+      expect(m.removed, 1);
+      for (final (x, y) in const [(125, 250), (107, 250), (143, 185), (107, 325)]) {
+        expect(m.remove[y * w + x], 255, reason: 'left of the one behind at ($x, $y)');
+        expect(m.keep[y * w + x], 0);
+      }
+      expect(m.keep[200 * w + 200], 255); // body
+      expect(m.keep[105 * w + 140], 255); // their own arm, though thin
     });
   });
 
@@ -297,6 +343,9 @@ void main() {
       '/a': Uint8List.fromList(List.generate(3000, (i) => i % 256)),
       '/b': Uint8List.fromList(List.generate(5000, (i) => (i * 7) % 256)),
       '/c': Uint8List.fromList(List.generate(70000, (i) => (i * 13) % 256)),
+      '/d': Uint8List.fromList(List.generate(1000, (i) => (i * 3) % 256)),
+      '/e': Uint8List.fromList(List.generate(2000, (i) => (i * 5) % 256)),
+      '/f': Uint8List.fromList(List.generate(4000, (i) => (i * 11) % 256)),
     };
     var cutAfter = 0; // > 0: the next response stops after this many bytes
     final ranges = <String?>[];
@@ -336,7 +385,7 @@ void main() {
     });
 
     List<ModelFile> files({bool badHash = false}) => [
-      for (final (i, path) in ['/a', '/b', '/c'].indexed)
+      for (final (i, path) in ['/a', '/b', '/c', '/d', '/e', '/f'].indexed)
         ModelFile(
           'm$i.onnx',
           'http://127.0.0.1:${server.port}$path',
@@ -352,7 +401,8 @@ void main() {
       final models = await store.ensure(onProgress: (d, t) => seen.add((d, t)));
       expect(await store.ready(), isTrue);
       expect(File(models.painter).readAsBytesSync(), blobs['/c']);
-      expect(seen.last, (78000, 78000));
+      expect(seen.last, (85000, 85000));
+      expect(File(models.thingOutliner).readAsBytesSync(), blobs['/f']);
       final calls = ranges.length;
       await store.ensure();
       expect(ranges.length, calls, reason: 'nothing fetched the second time');

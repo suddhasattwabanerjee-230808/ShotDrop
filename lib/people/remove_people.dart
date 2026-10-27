@@ -5,12 +5,17 @@ import 'dart:typed_data';
 import '../edit/erase.dart';
 import 'ort.dart';
 import 'people.dart';
+import 'things.dart';
 
 /// Remove People From Background: one tap keeps who the photo is of and
-/// rebuilds the background where everyone else stood.
+/// rebuilds the background where everyone else stood, and where the things
+/// that don't belong were (vehicles, bins, cones, bags, stray animals).
 ///
-///  1. Find everyone (people.dart) with the photo turned upright, outline
-///     them, and pick who stays (the main subject and anyone posing with them).
+///  1. Find everyone (people.dart) with the photo turned upright, pick who
+///     stays (the main subject and anyone posing with them), and outline
+///     them; someone standing inside the subject's box is told apart from
+///     the subject by those outlines. Then find the things (things.dart),
+///     outline them, and pick which go: all but the subject's own.
 ///  2. LaMa (Apache 2.0, OpenCV Zoo) paints what's behind the others, one
 ///     area at a time, from a 512 x 512 view of the area and what's around it.
 ///     It knows how walls, railings and buildings carry on, but paints soft.
@@ -18,38 +23,45 @@ import 'people.dart';
 ///     from the same photo, so the fill is as sharp and grainy as the rest,
 ///     never touching or copying the people who stay.
 
-/// The three model files, downloaded once (model_store.dart).
+/// The model files, downloaded once (model_store.dart).
 class PeopleModels {
-  const PeopleModels({required this.finder, required this.outliner, required this.painter});
-  final String finder, outliner, painter;
+  const PeopleModels({
+    required this.finder,
+    required this.outliner,
+    required this.painter,
+    required this.thingFinder,
+    required this.thingLook,
+    required this.thingOutliner,
+  });
+  final String finder, outliner, painter, thingFinder, thingLook, thingOutliner;
 }
 
 enum RemoveStage { finding, painting, finishing }
 
 /// What [removePeople] did: the photo with the people gone ([photo], same
-/// size), where it changed ([changed], 0..255 a pixel), and how many people
-/// went and stayed.
+/// size), where it changed ([changed], 0..255 a pixel), how many people went
+/// and stayed, and how many things went.
 class RemoveResult {
-  const RemoveResult(this.photo, this.changed, this.removed, this.kept);
+  const RemoveResult(this.photo, this.changed, this.removed, this.kept, {this.things = 0});
   final Photo photo;
   final Uint8List changed;
-  final int removed, kept;
+  final int removed, kept, things;
 }
 
 /// LaMa's fixed input size.
 const painterSize = 512;
 
-/// [photo] with everyone but its subject removed. [quarterTurns] (clockwise)
-/// turn the photo upright for finding people, as the editor will show it.
-/// [onFound] hears who was found (boxes in the upright photo, [w] x [h]) and
-/// who stays, before the slow part; [onProgress] gets the stage and 0..1
-/// overall.
+/// [photo] with everyone but its subject removed, and every thing that
+/// doesn't belong. [quarterTurns] (clockwise) turn the photo upright for
+/// finding them, as the editor will show it. [onFound] hears who was found
+/// (boxes in the upright photo, [w] x [h]) and who stays, and the things that
+/// go, before the slow part; [onProgress] gets the stage and 0..1 overall.
 Future<RemoveResult> removePeople(
   Photo photo,
   OrtRunner ort,
   PeopleModels models, {
   int quarterTurns = 0,
-  void Function(List<Found> people, Set<int> stays, int w, int h)? onFound,
+  void Function(List<Found> people, Set<int> stays, List<Thing> things, int w, int h)? onFound,
   void Function(RemoveStage stage, double progress)? onProgress,
 }) async {
   final turns = quarterTurns % 4;
@@ -67,28 +79,85 @@ Future<RemoveResult> removePeople(
       Tensor.f32('images', const [1, 3, finderSize, finderSize], input),
     ]);
     found.addAll(finderPeople(out.first.floats, scale, region, w, h));
-    onProgress?.call(RemoveStage.finding, 0.15 * (i + 1) / regions.length);
+    onProgress?.call(RemoveStage.finding, 0.12 * (i + 1) / regions.length);
   }
-  final people = onePerPerson(found);
-  final stays = whoStays(people, w, h);
-  onFound?.call(people, stays, w, h);
-  if (people.length == stays.length) {
+  var people = onePerPerson(found);
+  var stays = whoStays(people, w, h);
+
+  // And every thing that might not belong.
+  final thingAreas = thingRegions(w, h);
+  final seen = <Thing>[];
+  for (var i = 0; i < thingAreas.length; i++) {
+    final region = thingAreas[i];
+    final out = await ort.run(models.thingFinder, [
+      Tensor.f32('pixel_values', const [1, 3, thingFinderSize, thingFinderSize], thingFinderInput(upright, region)),
+    ]);
+    final logits = out.firstWhere((t) => t.name == 'logits').floats;
+    final boxes = out.firstWhere((t) => t.name == 'pred_boxes').floats;
+    seen.addAll(finderThings(logits, boxes, region, w, h));
+    onProgress?.call(RemoveStage.finding, 0.12 + 0.05 * (i + 1) / thingAreas.length);
+  }
+  final things = onePerPerson(seen);
+
+  var outlines = <Outline>[];
+  if (people.length > stays.length || things.isNotEmpty) {
+    for (var i = 0; i < people.length; i++) {
+      final person = people[i];
+      final crop = outlinerCrop(person, w, h);
+      final out = await ort.run(models.outliner, [
+        Tensor.f32('x', const [1, 3, outlinerSize, outlinerSize], outlinerInput(upright, crop)),
+      ]);
+      final scores = out.first.floats;
+      outlines.add(await _outlineOf(person, crop, scores, w, h));
+      onProgress?.call(RemoveStage.finding, 0.17 + 0.05 * (i + 1) / people.length);
+    }
+    // Someone inside another's box: the same body, or someone behind them.
+    (people, outlines, stays) = await _sortOutOverlaps(people, outlines, stays);
+  }
+
+  final thingOutlines = <Outline>[];
+  if (things.isNotEmpty) {
+    final (look, lw, lh) = await _samInput(upright);
+    final seenBy = await ort.run(models.thingLook, [
+      Tensor.f32('input_image', [lh, lw, 3], look),
+    ]);
+    final embeddings = seenBy.first.floats;
+    final (mw, mh) = samMaskSizeFor(w, h);
+    onProgress?.call(RemoveStage.finding, 0.25);
+    for (var i = 0; i < things.length; i++) {
+      final (corners, labels) = samPrompt(things[i], w, h);
+      final out = await ort.run(models.thingOutliner, [
+        Tensor.f32('image_embeddings', const [1, 256, 64, 64], embeddings),
+        Tensor.f32('point_coords', const [1, 2, 2], corners),
+        Tensor.f32('point_labels', const [1, 2], labels),
+        Tensor.f32('mask_input', const [1, 1, 256, 256], Float32List(256 * 256)),
+        Tensor.f32('has_mask_input', const [1], Float32List(1)),
+        Tensor.f32('orig_im_size', const [2], Float32List.fromList([mh.toDouble(), mw.toDouble()])),
+      ]);
+      final mask = out.firstWhere((t) => t.name == 'masks').floats;
+      thingOutlines.add(await _thingOutline(things[i], mask, mw, mh, w, h));
+      onProgress?.call(RemoveStage.finding, 0.25 + 0.05 * (i + 1) / things.length);
+    }
+  }
+  final thingsKept = await _thingsStaying(things, thingOutlines, people, outlines, stays, w, h);
+  final thingsGoing = things.length - thingsKept.length;
+  onFound?.call(
+    people,
+    stays,
+    [
+      for (var i = 0; i < things.length; i++)
+        if (!thingsKept.contains(i)) things[i],
+    ],
+    w,
+    h,
+  );
+  if (people.length == stays.length && thingsGoing == 0) {
     onProgress?.call(RemoveStage.finishing, 1);
     return RemoveResult(photo, Uint8List(photo.width * photo.height), 0, stays.length);
   }
 
-  final outlines = <Outline>[];
-  for (var i = 0; i < people.length; i++) {
-    final person = people[i];
-    final crop = outlinerCrop(person, w, h);
-    final out = await ort.run(models.outliner, [
-      Tensor.f32('x', const [1, 3, outlinerSize, outlinerSize], outlinerInput(upright, crop)),
-    ]);
-    final scores = out.first.floats;
-    outlines.add(await _outlineOf(person, crop, scores, w, h));
-    onProgress?.call(RemoveStage.finding, 0.15 + 0.1 * (i + 1) / people.length);
-  }
-  final masks = await _peopleMasks(people, outlines, stays, w, h);
+  var masks = await _peopleMasks(people, outlines, stays, w, h);
+  if (thingsGoing > 0) masks = await _withThings(masks, things, thingOutlines, thingsKept, w, h);
 
   // 2. LaMa's picture of what's behind them, area by area.
   final hole = await _grownMask(masks.remove, masks.keep, w, h, 3);
@@ -106,7 +175,7 @@ Future<RemoveResult> removePeople(
     final pasted = await _pastePainted(Photo(w, h, guide), hole, area, painted);
     guide.setAll(0, pasted);
     guideScale = math.max(guideScale, (math.max(area.w, area.h) / painterSize).ceil());
-    onProgress?.call(RemoveStage.painting, 0.25 + 0.45 * (i + 1) / areas.length);
+    onProgress?.call(RemoveStage.painting, 0.3 + 0.4 * (i + 1) / areas.length);
   }
   ort.close().catchError((Object _) {}); // the models take a few hundred MB loaded
 
@@ -130,7 +199,7 @@ Future<RemoveResult> removePeople(
     result = await _turnPhoto(result, back);
     changed = await _turnPlane(hole, w, h, back);
   }
-  return RemoveResult(result, changed, masks.removed, masks.kept);
+  return RemoveResult(result, changed, masks.removed, masks.kept, things: thingsGoing);
 }
 
 // Off the UI isolate. Each starts its isolate from here, where the closure
@@ -141,6 +210,31 @@ Future<Photo> _turnPhoto(Photo p, int turns) => Isolate.run(() => turnPhoto(p, t
 Future<Uint8List> _turnPlane(Uint8List m, int w, int h, int turns) => Isolate.run(() => turnPlane(m, w, h, turns));
 Future<Outline> _outlineOf(Found p, Box crop, Float32List scores, int w, int h) =>
     Isolate.run(() => outlineOf(p, crop, scores, w, h));
+Future<(List<Found>, List<Outline>, Set<int>)> _sortOutOverlaps(
+  List<Found> people,
+  List<Outline> outlines,
+  Set<int> stays,
+) => Isolate.run(() => sortOutOverlaps(people, outlines, stays));
+Future<(Float32List, int, int)> _samInput(Photo p) => Isolate.run(() => samInput(p));
+Future<Outline> _thingOutline(Found t, Float32List mask, int mw, int mh, int w, int h) =>
+    Isolate.run(() => thingOutline(t, mask, mw, mh, w, h));
+Future<Set<int>> _thingsStaying(
+  List<Thing> things,
+  List<Outline> outlines,
+  List<Found> people,
+  List<Outline> peopleOutlines,
+  Set<int> stays,
+  int w,
+  int h,
+) => Isolate.run(() => thingsStaying(things, outlines, people, peopleOutlines, stays, w, h));
+Future<PeopleMasks> _withThings(
+  PeopleMasks masks,
+  List<Thing> things,
+  List<Outline> outlines,
+  Set<int> staying,
+  int w,
+  int h,
+) => Isolate.run(() => withThings(masks, things, outlines, staying, w, h));
 Future<PeopleMasks> _peopleMasks(List<Found> people, List<Outline> outlines, Set<int> stays, int w, int h) =>
     Isolate.run(() => peopleMasks(people, outlines, stays, w, h));
 Future<Uint8List> _grownMask(Uint8List remove, Uint8List keep, int w, int h, int grow) =>

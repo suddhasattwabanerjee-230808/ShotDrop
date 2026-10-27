@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'remove_people.dart';
 
-/// A model Remove People downloads once: from a fixed revision on Hugging
+/// A model Remove People & Objects downloads once: from a fixed revision on Hugging
 /// Face, checked against its size and SHA-256.
 class ModelFile {
   const ModelFile(this.name, this.url, this.bytes, this.sha256);
@@ -14,7 +14,7 @@ class ModelFile {
   final int bytes;
 }
 
-/// All from OpenCV Zoo (Apache 2.0).
+/// The people models, all from OpenCV Zoo (Apache 2.0).
 const finderModel = ModelFile(
   'person_finder_yolox_s_int8.onnx',
   'https://huggingface.co/opencv/object_detection_yolox/resolve/78c368f74ce73ee28fc7a1be418a598c71b58b52/object_detection_yolox_2022nov_int8.onnx',
@@ -33,16 +33,43 @@ const painterModel = ModelFile(
   92591623,
   '7df918ac3921d3daf0aae1d219776cf0dc4e4935f035af81841b40adcf74fdf2',
 );
-const peopleModelFiles = [finderModel, outlinerModel, painterModel];
 
-/// Total download, in bytes.
-final peopleModelBytes = peopleModelFiles.fold<int>(0, (s, f) => s + f.bytes);
+/// D-FINE-S on Objects365 (Apache 2.0), int8, as ONNX by onnx-community.
+const thingFinderModel = ModelFile(
+  'thing_finder_dfine_s_obj365_int8.onnx',
+  'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/resolve/a61e4cdfe4f9d3188a305d91e37dbf38688ffbb8/onnx/model_int8.onnx',
+  11333721,
+  '3355fe77be41bca48937cd5bb100de51e1bfd894e67275f6d398cfda35624838',
+);
+
+/// MobileSAM (Apache 2.0), as ONNX by Acly (MIT): the encoder looks at the
+/// photo once, the decoder outlines each thing from its box.
+const thingLookModel = ModelFile(
+  'thing_outline_mobilesam_encoder.onnx',
+  'https://huggingface.co/Acly/MobileSAM/resolve/0d3b403339b4674a82493d5e97964dd78089ddc8/mobile_sam_image_encoder.onnx',
+  28157093,
+  '580f5fb648ea1062c0aabc26217aed56921985f03f0cbbd852bba81d760cc749',
+);
+const thingOutlinerModel = ModelFile(
+  'thing_outline_sam_decoder.onnx',
+  'https://huggingface.co/Acly/MobileSAM/resolve/0d3b403339b4674a82493d5e97964dd78089ddc8/sam_mask_decoder_single.onnx',
+  16501323,
+  '93915fc7c993ab9d59ab8c9ccd3bce37f7509c81ab4150a74abd4d2abbd8570d',
+);
+const peopleModelFiles = [
+  finderModel,
+  outlinerModel,
+  painterModel,
+  thingFinderModel,
+  thingLookModel,
+  thingOutlinerModel,
+];
 
 /// Keeps the models in the app's own files (`models/`), which updates keep
 /// and storage tidying never touches, so they download once.
 class ModelStore {
   ModelStore({this._dir, HttpClient Function()? client, this.files = peopleModelFiles})
-    : assert(files.length == 3),
+    : assert(files.length == 6),
       _client = client ?? HttpClient.new;
 
   static final instance = ModelStore();
@@ -50,7 +77,8 @@ class ModelStore {
   Directory? _dir;
   final HttpClient Function() _client;
 
-  /// The finder, outliner and painter, in that order.
+  /// The finder, outliner and painter for people, then the finder, the
+  /// look and the outliner for things, in that order.
   final List<ModelFile> files;
 
   Future<Directory> get dir async => _dir ??= Directory('${(await getApplicationSupportDirectory()).path}/models');
@@ -58,33 +86,40 @@ class ModelStore {
   Future<String> pathOf(ModelFile f) async => '${(await dir).path}/${f.name}';
 
   /// Whether every model is downloaded (by size; checked fully when fetched).
-  Future<bool> ready() async {
+  Future<bool> ready() async => await missingBytes() == 0;
+
+  /// How much is still to download.
+  Future<int> missingBytes() async {
+    var missing = 0;
     for (final f in files) {
       final file = File(await pathOf(f));
-      if (!await file.exists() || await file.length() != f.bytes) return false;
+      if (!await file.exists() || await file.length() != f.bytes) missing += f.bytes;
     }
-    return true;
+    return missing;
   }
 
   /// The models' paths, downloading whatever's missing first. [onProgress]
-  /// gets bytes done and the total, while downloading. A dropped download
-  /// carries on from where it got to next time.
+  /// gets bytes done and the total of what's missing, while downloading. A
+  /// dropped download carries on from where it got to next time.
   Future<PeopleModels> ensure({void Function(int done, int total)? onProgress}) async {
     await (await dir).create(recursive: true);
-    final total = files.fold<int>(0, (s, f) => s + f.bytes);
+    final total = await missingBytes();
     var before = 0;
     for (final f in files) {
       final path = await pathOf(f);
       final file = File(path);
       if (!await file.exists() || await file.length() != f.bytes) {
         await _fetch(f, path, (n) => onProgress?.call(before + n, total));
+        before += f.bytes;
       }
-      before += f.bytes;
     }
     return PeopleModels(
       finder: await pathOf(files[0]),
       outliner: await pathOf(files[1]),
       painter: await pathOf(files[2]),
+      thingFinder: await pathOf(files[3]),
+      thingLook: await pathOf(files[4]),
+      thingOutliner: await pathOf(files[5]),
     );
   }
 

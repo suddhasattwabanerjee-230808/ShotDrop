@@ -393,10 +393,18 @@ class _EditorScreenState extends State<EditorScreen> {
   // --- Remove People From Background ----------------------------------------------
 
   static String _people(int n) => n == 1 ? '1 Person' : '$n People';
+  static String _things(int n) => n == 1 ? '1 Object' : '$n Objects';
 
-  /// One tap: the photo's subject stays, everyone else in it goes, and the
-  /// background behind them is rebuilt (people/remove_people.dart). The first
-  /// time, the AI downloads first. The result is a new copy of the source,
+  /// '2 People', '3 Objects' or '2 People & 3 Objects'.
+  static String _peopleAndThings(int people, int things) => [
+    if (people > 0) _people(people),
+    if (things > 0) _things(things),
+  ].join(' & ');
+
+  /// One tap: the photo's subject stays, everyone else in it goes and so does
+  /// every thing that doesn't belong (vehicles, bins, cones, bags, stray
+  /// animals), and the background behind them is rebuilt
+  /// (people/remove_people.dart). The first time, the AI downloads first. The result is a new copy of the source,
   /// which the edit then uses (an undo step).
   Future<void> _removePeople() async {
     final source = _sourcePath;
@@ -428,8 +436,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
     try {
       final store = ModelStore.instance;
-      final mb = (peopleModelBytes / 1e6).round();
-      if (!await store.ready()) show('Getting The AI Ready…', 'One-Time Download · $mb MB', null);
+      final mb = (await store.missingBytes() / 1e6).round();
+      if (mb > 0) show('Getting The AI Ready…', 'One-Time Download · $mb MB', null);
       final models = await store.ensure(
         onProgress: (done, total) => show(
           'Getting The AI Ready…',
@@ -438,7 +446,7 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
       );
       if (!live()) return;
-      show('Finding People…', 'Looking At Everyone In The Photo', 0.02);
+      show('Finding People & Objects…', 'Looking At Everything In The Photo', 0.02);
       final work = await _decode(source, maxEdge: _workEdge);
       final bytes = await work.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
       final photo = Photo(work.width, work.height, bytes!.buffer.asUint8List());
@@ -448,7 +456,7 @@ class _EditorScreenState extends State<EditorScreen> {
         OrtChannel.instance,
         models,
         quarterTurns: params.quarterTurns,
-        onFound: (people, stays, w, h) {
+        onFound: (people, stays, things, w, h) {
           if (!live()) return;
           // Found upright (turned, not flipped); shown turned and flipped.
           Rect shown(Found f) {
@@ -462,11 +470,12 @@ class _EditorScreenState extends State<EditorScreen> {
               ..removing = [
                 for (var i = 0; i < people.length; i++)
                   if (!stays.contains(i)) shown(people[i]),
+                for (final t in things) shown(t),
               ]
               ..keeping = [for (final i in stays) shown(people[i])];
-            if (going > 0) {
+            if (going > 0 || things.isNotEmpty) {
               view
-                ..title = 'Removing ${_people(going)}…'
+                ..title = 'Removing ${_peopleAndThings(going, things.length)}…'
                 ..detail = stays.isEmpty
                     ? 'Rebuilding The Background'
                     : 'Keeping ${_people(stays.length)} · Rebuilding The Background';
@@ -482,9 +491,9 @@ class _EditorScreenState extends State<EditorScreen> {
         },
       );
       if (!live()) return;
-      if (result.removed == 0) {
+      if (result.removed == 0 && result.things == 0) {
         show(
-          result.kept == 0 ? 'No People Found In This Photo' : 'No One Else In The Background',
+          result.kept == 0 ? 'Nothing Unwanted Found In This Photo' : 'Nothing Else In The Background',
           'Nothing To Remove',
           1,
         );
@@ -508,7 +517,7 @@ class _EditorScreenState extends State<EditorScreen> {
         view
           ..progress = 1
           ..after = after
-          ..done = '${_people(result.removed)} Removed';
+          ..done = '${_peopleAndThings(result.removed, result.things)} Removed';
       });
       HapticFeedback.mediumImpact();
     } catch (e) {
@@ -524,8 +533,8 @@ class _EditorScreenState extends State<EditorScreen> {
     HandshakeException() ||
     TimeoutException() => 'Couldn\'t Download The AI. Connect To The Internet And Try Again.',
     FileSystemException(message: final m) when m.contains('damaged') => 'The AI Download Was Damaged. Try Again.',
-    PlatformException(message: final m) => 'Couldn\'t Remove People: ${m ?? 'Unknown Error'}',
-    _ => 'Couldn\'t Remove People: $e',
+    PlatformException(message: final m) => 'Couldn\'t Clean Up The Background: ${m ?? 'Unknown Error'}',
+    _ => 'Couldn\'t Clean Up The Background: $e',
   };
 
   /// The result has wiped in: the edit now uses it (an undo step).
@@ -557,7 +566,7 @@ class _EditorScreenState extends State<EditorScreen> {
               : done
               ? () =>
                     ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('Tap Undo To Bring Them Back')))
+                        .showSnackBar(const SnackBar(content: Text('Tap Undo To Bring It All Back')))
               : _removePeople,
           child: Ink(
             height: 48,
@@ -579,7 +588,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  done ? 'Background People Removed' : 'Remove People From Background',
+                  done ? 'Background Cleaned Up' : 'Remove People & Objects',
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: done ? ink : Colors.white),
                 ),
               ],

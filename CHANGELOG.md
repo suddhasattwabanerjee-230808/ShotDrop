@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.0] - 2026-10-27 (build 27)
+
+Remove unwanted objects along with the people, in the same one tap.
+
+- **Remove People & Objects** (the button that was Remove People From Background): along with the people in the background, it now removes vehicles (cars, buses, trucks, vans, motorbikes, scooters, bicycles, rickshaws, carts, trolleys), street clutter (dustbins, traffic cones, barrels, boxes, hydrants), bags and suitcases left about, and stray animals. The main subject and the background stay.
+- **The subject keeps what's theirs**: the bike they hold, the car they lean on, the scooter they sit on, the bag on their shoulder. What's part of the place (seats, signs, street lights, buildings) and what people wear stays too. Something too big to rebuild well stays.
+- **Two more AI models, downloaded once on the next tap** (about 56 MB): an object finder (D-FINE, Apache 2.0) and an object outliner (MobileSAM, Apache 2.0). Only what's missing is downloaded.
+- **A raised arm stays with its person**: a second box the finder puts on the subject's own arm no longer gets it removed.
+
 ## [0.9.0] - 2026-10-27 (build 26)
 
 Remove people from the background in one tap.

@@ -12,7 +12,8 @@ import '../edit/erase.dart' show distanceTo;
 ///   background are big enough to be found.
 /// - Outliner: PP-HumanSeg (Apache 2.0, OpenCV Zoo), on a crop around each
 ///   person, kept to that person's own box and their own blob, since the crop
-///   shows neighbours too.
+///   shows neighbours too. Who's inside whose box is settled on these
+///   outlines, not the boxes ([sortOutOverlaps]).
 
 /// An RGBA photo.
 class Photo {
@@ -139,16 +140,18 @@ List<Found> finderPeople(
   return found;
 }
 
-/// One box per person: the surest first (the bigger of two equally sure); a
-/// box overlapping a kept one by more than half (IoU), or lying mostly
-/// inside it, goes.
-List<Found> onePerPerson(List<Found> all) {
+/// One box per person (or thing): the surest first (the bigger of two
+/// equally sure); a box overlapping a kept one by more than half (IoU) goes.
+/// A box lying inside a bigger one stays for now: it's either a second box
+/// on the same body or someone behind them, and only their outlines can
+/// tell ([sortOutOverlaps]).
+List<T> onePerPerson<T extends Found>(List<T> all) {
   final sorted = [...all]
     ..sort((a, b) {
       final s = (b.score * 100).round().compareTo((a.score * 100).round());
       return s != 0 ? s : b.area.compareTo(a.area);
     });
-  final kept = <Found>[];
+  final kept = <T>[];
   outer:
   for (final f in sorted) {
     for (final k in kept) {
@@ -156,8 +159,7 @@ List<Found> onePerPerson(List<Found> all) {
       final iy = math.max(0.0, math.min(f.y1, k.y1) - math.max(f.y0, k.y0));
       final inter = ix * iy;
       if (inter <= 0) continue;
-      final iou = inter / (f.area + k.area - inter);
-      if (iou >= 0.5 || inter / math.min(f.area, k.area) >= 0.8) continue outer;
+      if (inter / (f.area + k.area - inter) >= 0.5) continue outer;
     }
     kept.add(f);
   }
@@ -277,42 +279,200 @@ Outline outlineOf(Found person, Box crop, Float32List out, int width, int height
     }
   }
   // Their own blob: the biggest 4-connected one above 0.4.
-  final label = Int32List(bw * bh);
-  var bestLabel = 0, bestSize = 0, next = 0;
-  final stack = <int>[];
-  for (var i = 0; i < label.length; i++) {
-    if (prob[i] <= 0.4 || label[i] != 0) continue;
-    next++;
-    var size = 0;
-    label[i] = next;
-    stack.add(i);
-    while (stack.isNotEmpty) {
-      final j = stack.removeLast();
-      size++;
-      final x = j % bw, y = j ~/ bw;
-      for (final k in [if (x > 0) j - 1, if (x < bw - 1) j + 1, if (y > 0) j - bw, if (y < bh - 1) j + bw]) {
-        if (label[k] == 0 && prob[k] > 0.4) {
-          label[k] = next;
-          stack.add(k);
-        }
-      }
-    }
-    if (size > bestSize) {
-      bestSize = size;
-      bestLabel = next;
-    }
+  final on = Uint8List(bw * bh);
+  for (var i = 0; i < on.length; i++) {
+    if (prob[i] > 0.4) on[i] = 1;
   }
+  final blob = _biggestBlob(on, bw, bh);
   // Keep the soft edge: anything within 3 px of the blob keeps its probability.
-  final blob = Uint8List(bw * bh);
-  for (var i = 0; i < blob.length; i++) {
-    if (bestLabel != 0 && label[i] == bestLabel) blob[i] = 1;
-  }
   final near = distanceTo(bw, bh, blob);
   final alpha = Uint8List(bw * bh);
   for (var i = 0; i < alpha.length; i++) {
     if (near[i] <= 3) alpha[i] = (prob[i] * 255).round().clamp(0, 255);
   }
   return Outline(box, alpha);
+}
+
+/// The 4-connected blobs of [on] (w x h, non-zero = on): a label for each
+/// pixel (0 = off, blobs from 1) and each blob's size (index = label).
+(Int32List, List<int>) _blobs(Uint8List on, int w, int h) {
+  final label = Int32List(w * h);
+  final sizes = [0];
+  final stack = <int>[];
+  for (var i = 0; i < label.length; i++) {
+    if (on[i] == 0 || label[i] != 0) continue;
+    final next = sizes.length;
+    var size = 0;
+    label[i] = next;
+    stack.add(i);
+    while (stack.isNotEmpty) {
+      final j = stack.removeLast();
+      size++;
+      final x = j % w, y = j ~/ w;
+      for (final k in [if (x > 0) j - 1, if (x < w - 1) j + 1, if (y > 0) j - w, if (y < h - 1) j + w]) {
+        if (label[k] == 0 && on[k] != 0) {
+          label[k] = next;
+          stack.add(k);
+        }
+      }
+    }
+    sizes.add(size);
+  }
+  return (label, sizes);
+}
+
+/// The biggest blob of [on]: 1 there, else 0.
+Uint8List _biggestBlob(Uint8List on, int w, int h) {
+  final (label, sizes) = _blobs(on, w, h);
+  var best = 0;
+  for (var l = 1; l < sizes.length; l++) {
+    if (sizes[l] > sizes[best]) best = l;
+  }
+  final blob = Uint8List(w * h);
+  if (best == 0) return blob;
+  for (var i = 0; i < blob.length; i++) {
+    if (label[i] == best) blob[i] = 1;
+  }
+  return blob;
+}
+
+/// The thick of [person]'s outline [o] (1 = core, over [o]'s box): opened by
+/// 2.5% of their height, so whatever hangs on by a neck thinner than twice
+/// that (someone behind them, touching a shoulder) falls away, while their
+/// body, head and arms stay.
+Uint8List coreOf(Found person, Outline o) {
+  final bw = o.box.w, bh = o.box.h, n = bw * bh;
+  final k = math.max(2.0, person.h * 0.025);
+  final off = Uint8List(n);
+  for (var i = 0; i < n; i++) {
+    if (o.alpha[i] < 128) off[i] = 1;
+  }
+  final depth = distanceTo(bw, bh, off);
+  final deep = Uint8List(n);
+  for (var i = 0; i < n; i++) {
+    if (off[i] == 0 && depth[i] > k) deep[i] = 1;
+  }
+  final seed = _biggestBlob(deep, bw, bh);
+  final core = Uint8List(n);
+  if (!seed.contains(1)) {
+    // Thinner than the opening all over: all of it is the core.
+    for (var i = 0; i < n; i++) {
+      core[i] = 1 - off[i];
+    }
+    return core;
+  }
+  final near = distanceTo(bw, bh, seed);
+  for (var i = 0; i < n; i++) {
+    if (off[i] == 0 && near[i] <= k + 1) core[i] = 1;
+  }
+  return core;
+}
+
+/// People found overlapping someone else, sorted out by their outlines.
+///
+/// A box half or more inside a bigger one is either a second box on the
+/// same body (their face, their top half, a raised arm) or someone else:
+/// someone behind them, seen beside their shoulder. It's the same body when
+/// most of its outline lies on the bigger one's core ([coreOf]); then it
+/// goes from the list, unless it's staying and the bigger one isn't.
+///
+/// Where someone staying's outline runs on into someone being removed (the
+/// outliner saw both, joined at an elbow), the stayer gives up what's the
+/// other's outside their own core: each piece of their outline beyond the
+/// core that's mostly the other's outline. So the one behind goes whole,
+/// not half, while the stayer's own arms and hair stay theirs.
+///
+/// Returns the people left, their outlines and who stays, in the same order.
+(List<Found>, List<Outline>, Set<int>) sortOutOverlaps(List<Found> people, List<Outline> outlines, Set<int> stays) {
+  final cores = <int, Uint8List>{};
+  Uint8List core(int i) => cores[i] ??= coreOf(people[i], outlines[i]);
+
+  // A second box on the same body.
+  final drop = <int>{};
+  for (var i = 0; i < people.length; i++) {
+    final a = people[i];
+    for (var j = 0; j < people.length; j++) {
+      final b = people[j];
+      if (i == j || a.area >= b.area || (stays.contains(i) && !stays.contains(j))) continue;
+      final ix = math.max(0.0, math.min(a.x1, b.x1) - math.max(a.x0, b.x0));
+      final iy = math.max(0.0, math.min(a.y1, b.y1) - math.max(a.y0, b.y0));
+      if (ix * iy < 0.5 * a.area) continue;
+      final o = outlines[i], q = outlines[j], c = core(j);
+      var mine = 0, onCore = 0;
+      for (var y = 0; y < o.box.h; y++) {
+        for (var x = 0; x < o.box.w; x++) {
+          if (o.alpha[y * o.box.w + x] < 128) continue;
+          mine++;
+          final qx = o.box.l + x - q.box.l, qy = o.box.t + y - q.box.t;
+          if (qx >= 0 && qy >= 0 && qx < q.box.w && qy < q.box.h && c[qy * q.box.w + qx] != 0) onCore++;
+        }
+      }
+      if (onCore * 2 >= mine) {
+        drop.add(i);
+        break;
+      }
+    }
+  }
+
+  // Stayers give up the others joined onto them.
+  final alphas = [for (final o in outlines) o.alpha];
+  for (final s in stays) {
+    if (drop.contains(s)) continue;
+    final so = outlines[s];
+    final sb = so.box, bw = sb.w, bh = sb.h, n = bw * bh;
+    // The others' outlines, over the stayer's box.
+    final theirs = Uint8List(n);
+    var any = false;
+    for (var i = 0; i < people.length; i++) {
+      if (stays.contains(i) || drop.contains(i)) continue;
+      final o = outlines[i];
+      final l = math.max(sb.l, o.box.l), t = math.max(sb.t, o.box.t);
+      final r = math.min(sb.r, o.box.r), b = math.min(sb.b, o.box.b);
+      for (var y = t; y < b; y++) {
+        for (var x = l; x < r; x++) {
+          if (o.alpha[(y - o.box.t) * o.box.w + x - o.box.l] >= 77) {
+            theirs[(y - sb.t) * bw + x - sb.l] = 1;
+            any = true;
+          }
+        }
+      }
+    }
+    if (!any) continue;
+    final c = core(s);
+    final beyond = Uint8List(n);
+    for (var i = 0; i < n; i++) {
+      if (so.alpha[i] >= 128 && c[i] == 0) beyond[i] = 1;
+    }
+    final (label, sizes) = _blobs(beyond, bw, bh);
+    final shared = List.filled(sizes.length, 0);
+    for (var i = 0; i < n; i++) {
+      if (label[i] != 0 && theirs[i] != 0) shared[label[i]]++;
+    }
+    final give = Uint8List(n);
+    var gives = false;
+    for (var i = 0; i < n; i++) {
+      final l = label[i];
+      if (l != 0 && theirs[i] != 0 && shared[l] * 2 >= sizes[l]) {
+        give[i] = 1;
+        gives = true;
+      }
+    }
+    if (!gives) continue;
+    // With the soft edge along what's given up.
+    final near = distanceTo(bw, bh, give);
+    final alpha = Uint8List.fromList(so.alpha);
+    for (var i = 0; i < n; i++) {
+      if (theirs[i] != 0 && c[i] == 0 && near[i] <= 3) alpha[i] = 0;
+    }
+    alphas[s] = alpha;
+  }
+
+  final left = [for (var i = 0; i < people.length; i++) if (!drop.contains(i)) i];
+  return (
+    [for (final i in left) people[i]],
+    [for (final i in left) Outline(outlines[i].box, alphas[i])],
+    {for (var k = 0; k < left.length; k++) if (stays.contains(left[k])) k},
+  );
 }
 
 // ─── Masks ───────────────────────────────────────────────────────────────
