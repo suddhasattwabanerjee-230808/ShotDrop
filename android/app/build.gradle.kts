@@ -93,4 +93,7 @@ dependencies {
     implementation("com.google.mlkit:face-detection:16.1.7")
     // Runs MobileFaceNet (assets/MobileFaceNet.tflite), which tells people apart.
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    // Runs Remove People's models (person finder, outliner, LaMa). The models
+    // themselves are downloaded on first use, not bundled.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
 }

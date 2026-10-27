@@ -13,3 +13,8 @@
 # code by name, which R8 can't see.
 -keep class org.tensorflow.lite.** { *; }
 -dontwarn org.tensorflow.lite.**
+
+# ONNX Runtime (Remove People's models) is reached from its native code by
+# name too.
+-keep class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**

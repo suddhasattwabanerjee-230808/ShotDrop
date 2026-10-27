@@ -120,6 +120,7 @@ class EditParams {
     this.saturation = 0,
     this.warmth = 0,
     this.blurAreas = const [],
+    this.noPeople,
   });
 
   final int quarterTurns; // 0..3, clockwise
@@ -148,6 +149,10 @@ class EditParams {
   final double brightness, contrast, saturation, warmth; // each -1..1
   final List<Rect> blurAreas; // normalized rectangles in the cropped image
 
+  /// Remove People From Background: the copy of the source with the people
+  /// in the background removed, edited instead of the source (null: none).
+  final String? noPeople;
+
   bool get isOriented => quarterTurns.isOdd;
 
   EditParams copyWith({
@@ -168,6 +173,7 @@ class EditParams {
     double? saturation,
     double? warmth,
     List<Rect>? blurAreas,
+    Object? noPeople = _same,
   }) => EditParams(
     quarterTurns: quarterTurns ?? this.quarterTurns,
     flipH: flipH ?? this.flipH,
@@ -186,7 +192,10 @@ class EditParams {
     saturation: saturation ?? this.saturation,
     warmth: warmth ?? this.warmth,
     blurAreas: blurAreas ?? this.blurAreas,
+    noPeople: identical(noPeople, _same) ? this.noPeople : noPeople as String?,
   );
+
+  static const _same = Object();
 
   Map<String, Object?> toJson() => {
     'quarterTurns': quarterTurns,
@@ -206,6 +215,7 @@ class EditParams {
     'saturation': saturation,
     'warmth': warmth,
     if (blurAreas.isNotEmpty) 'blurAreas': [for (final r in blurAreas) [r.left, r.top, r.right, r.bottom]],
+    'noPeople': ?noPeople,
   };
 
   factory EditParams.fromJson(Map<String, Object?> j) {
@@ -241,6 +251,7 @@ class EditParams {
         for (final r in (j['blurAreas'] as List? ?? const []))
           if (r is List && r.length == 4) Rect.fromLTRB((r[0] as num).toDouble(), (r[1] as num).toDouble(), (r[2] as num).toDouble(), (r[3] as num).toDouble()),
       ],
+      noPeople: j['noPeople'] as String?,
     );
   }
 }

@@ -10,6 +10,7 @@ class MainActivity : FlutterActivity() {
     private var pose: PoseChannel? = null
     private var faces: FaceChannel? = null
     private var app: AppChannel? = null
+    private var ort: OrtChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -19,6 +20,7 @@ class MainActivity : FlutterActivity() {
         share = ShareChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         pose = PoseChannel(flutterEngine.dartExecutor.binaryMessenger)
         app = AppChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        ort = OrtChannel(flutterEngine.dartExecutor.binaryMessenger)
     }
 
     override fun onResume() {
@@ -54,6 +56,8 @@ class MainActivity : FlutterActivity() {
         faces = null
         app?.dispose()
         app = null
+        ort?.dispose()
+        ort = null
         super.onDestroy()
     }
 }

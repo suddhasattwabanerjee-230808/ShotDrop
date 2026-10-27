@@ -1,7 +1,7 @@
 name: shotdrop
 description: "Camera card to Instagram: pick, edit and post photos from a Nikon SD card."
 publish_to: 'none'
-version: 0.8.8+25
+version: 0.9.0+26
 
 environment:
   sdk: ^3.13.5
@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   path_provider: ^2.1.6
+  # SHA-256, to check Remove People's downloaded models.
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -11,6 +12,10 @@ import '../edit/filters.dart';
 import '../edit/render.dart';
 import '../edit/shape.dart';
 import '../models.dart';
+import '../people/model_store.dart';
+import '../people/ort.dart';
+import '../people/people.dart';
+import '../people/remove_people.dart';
 import '../theme.dart';
 import '../theme_switch.dart';
 import '../pose_channel.dart';
@@ -18,6 +23,7 @@ import '../prefetch.dart';
 import '../stores.dart';
 import '../widgets.dart';
 import 'body_tools.dart';
+import 'remove_people_overlay.dart';
 
 /// A photo to edit: straight from the card, or one already in the Upload folder.
 class EditTarget {
@@ -60,7 +66,9 @@ class _EditorScreenState extends State<EditorScreen> {
   String? _status = 'Opening…'; // non-null while loading or saving
   String? _error;
   String? _sourcePath;
-  ui.Image? _preview; // the source, at most _previewEdge px
+  // The source and any people-removed copies of it, at most _previewEdge px each.
+  final _decoded = <String, ui.Image>{};
+  final _decoding = <String>{};
   String? _placeholder; // a thumbnail to show while the photo comes off the card
 
   EditParams _p = const EditParams();
@@ -83,9 +91,54 @@ class _EditorScreenState extends State<EditorScreen> {
   String? _croppedFor; // the crop being rendered (or rendered)
   String? _croppedIs; // the crop _cropped actually shows
 
+  // Remove People, while it runs (null otherwise).
+  RemovalView? _removal;
+  bool _removalCancelled = false;
+  String? _removedPath; // its result, once ready
+
   static const _previewEdge = 1600;
 
+  /// Remove People works on the photo at this size, then scales its changes
+  /// up into the full-size source (everything else stays full-size).
+  static const _workEdge = 2048;
+
   EditTarget get _target => widget.targets[_index];
+
+  /// The photo being edited: the source, or its copy with the people removed.
+  ui.Image? get _preview => _decoded[_p.noPeople ?? _sourcePath] ?? _decoded[_sourcePath];
+
+  /// The source as it came off the card, for Hold To Compare.
+  ui.Image? get _original => _decoded[_sourcePath];
+
+  void _clearDecoded() {
+    for (final i in _decoded.values) {
+      i.dispose();
+    }
+    _decoded.clear();
+    _decoding.clear();
+  }
+
+  /// Decodes the people-removed copy the edit uses, if it isn't yet. If it's
+  /// gone (storage was cleared), the edit goes back to the source.
+  void _ensureDecoded() {
+    final path = _p.noPeople;
+    if (path == null || _decoded.containsKey(path) || !_decoding.add(path)) return;
+    final target = _target;
+    _decode(path, maxEdge: _previewEdge).then(
+      (img) {
+        if (!mounted || target != _target || !_decoding.remove(path)) return img.dispose();
+        setState(() => _decoded[path] = img);
+      },
+      onError: (Object _) {
+        if (!mounted || target != _target || !_decoding.remove(path)) return;
+        setState(() {
+          _p = _p.copyWith(noPeople: null);
+          if (_h >= 0) _history[_h] = _p;
+        });
+      },
+    );
+  }
+
   bool get _dirty => _h > 0;
 
   @override
@@ -96,7 +149,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   void dispose() {
-    _preview?.dispose();
+    _removalCancelled = true;
+    _clearDecoded();
     _cropped?.dispose();
     super.dispose();
   }
@@ -148,8 +202,8 @@ class _EditorScreenState extends State<EditorScreen> {
           ? existing.params
           : _defaultsFor(o, AppScope.of(context).settings);
       setState(() {
-        _preview?.dispose();
-        _preview = image;
+        _clearDecoded();
+        _decoded[path] = image;
         _sourcePath = path;
         _p = params;
         _history
@@ -211,7 +265,8 @@ class _EditorScreenState extends State<EditorScreen> {
       _p = _p.copyWith(slims: [for (final s in _p.slims) if (s.amount.abs() > 0.005) s]);
     });
     try {
-      final full = await _decode(source);
+      final noPeople = _p.noPeople;
+      final full = await _decode(noPeople != null && await File(noPeople).exists() ? noPeople : source);
       final out = await renderFinal(full, _p, maxEdge: settings.saveEdge);
       full.dispose();
       final bytes = await out.toByteData(format: ui.ImageByteFormat.rawRgba);
@@ -261,8 +316,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     setState(() {
       _index++;
-      _preview?.dispose();
-      _preview = null;
+      _clearDecoded();
       _cropped?.dispose();
       _cropped = null;
       _croppedFor = null;
@@ -272,6 +326,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _close() async {
+    if (_removal != null) return _cancelRemoval();
     if (_dirty && _status == null) {
       final leave = await showDialog<bool>(
         context: context,
@@ -335,13 +390,213 @@ class _EditorScreenState extends State<EditorScreen> {
     _slimDraft = placeSlim(_p.bodyOrDefault, _mask);
   }
 
+  // --- Remove People From Background ----------------------------------------------
+
+  static String _people(int n) => n == 1 ? '1 Person' : '$n People';
+
+  /// One tap: the photo's subject stays, everyone else in it goes, and the
+  /// background behind them is rebuilt (people/remove_people.dart). The first
+  /// time, the AI downloads first. The result is a new copy of the source,
+  /// which the edit then uses (an undo step).
+  Future<void> _removePeople() async {
+    final source = _sourcePath;
+    if (source == null || _status != null || _removal != null || _p.noPeople != null) return;
+    final target = _target;
+    final uploads = AppScope.of(context).uploads;
+    final messenger = ScaffoldMessenger.of(context);
+    final params = _p;
+    final view = RemovalView(title: 'Getting Ready…');
+    HapticFeedback.selectionClick();
+    setState(() {
+      _removal = view;
+      _removalCancelled = false;
+      _removedPath = null;
+      _bodyTool = null;
+      _slimDraft = null;
+      _comparing = false;
+    });
+    bool live() => mounted && _removal == view && !_removalCancelled && target == _target;
+    void show(String title, String detail, double? progress) {
+      if (!live()) return;
+      setState(() {
+        view
+          ..title = title
+          ..detail = detail
+          ..progress = progress;
+      });
+    }
+
+    try {
+      final store = ModelStore.instance;
+      final mb = (peopleModelBytes / 1e6).round();
+      if (!await store.ready()) show('Getting The AI Ready…', 'One-Time Download · $mb MB', null);
+      final models = await store.ensure(
+        onProgress: (done, total) => show(
+          'Getting The AI Ready…',
+          'One-Time Download · ${(done * 100 / total).floor()}% Of $mb MB',
+          done / total,
+        ),
+      );
+      if (!live()) return;
+      show('Finding People…', 'Looking At Everyone In The Photo', 0.02);
+      final work = await _decode(source, maxEdge: _workEdge);
+      final bytes = await work.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+      final photo = Photo(work.width, work.height, bytes!.buffer.asUint8List());
+      work.dispose();
+      final result = await removePeople(
+        photo,
+        OrtChannel.instance,
+        models,
+        quarterTurns: params.quarterTurns,
+        onFound: (people, stays, w, h) {
+          if (!live()) return;
+          // Found upright (turned, not flipped); shown turned and flipped.
+          Rect shown(Found f) {
+            final r = Rect.fromLTRB(f.x0 / w, f.y0 / h, f.x1 / w, f.y1 / h).intersect(const Rect.fromLTRB(0, 0, 1, 1));
+            return params.flipH ? Rect.fromLTRB(1 - r.right, r.top, 1 - r.left, r.bottom) : r;
+          }
+
+          final going = people.length - stays.length;
+          setState(() {
+            view
+              ..removing = [
+                for (var i = 0; i < people.length; i++)
+                  if (!stays.contains(i)) shown(people[i]),
+              ]
+              ..keeping = [for (final i in stays) shown(people[i])];
+            if (going > 0) {
+              view
+                ..title = 'Removing ${_people(going)}…'
+                ..detail = stays.isEmpty
+                    ? 'Rebuilding The Background'
+                    : 'Keeping ${_people(stays.length)} · Rebuilding The Background';
+            }
+          });
+        },
+        onProgress: (stage, p) {
+          if (!live()) return;
+          setState(() {
+            if (stage == RemoveStage.finishing) view.detail = 'Adding Final Touches';
+            view.progress = 0.04 + 0.9 * p;
+          });
+        },
+      );
+      if (!live()) return;
+      if (result.removed == 0) {
+        show(
+          result.kept == 0 ? 'No People Found In This Photo' : 'No One Else In The Background',
+          'Nothing To Remove',
+          1,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 1800));
+        if (live()) setState(() => _removal = null);
+        return;
+      }
+      show('Adding Final Touches…', 'Putting It Back At Full Size', 0.96);
+      final full = await _decode(source);
+      final fullBytes = await full.toByteData(format: ui.ImageByteFormat.rawStraightRgba);
+      final fw = full.width, fh = full.height;
+      full.dispose();
+      final merged = await mergeIntoInBackground(Photo(fw, fh, fullBytes!.buffer.asUint8List()), result);
+      final out = await uploads.noPeoplePathFor(target.shotId);
+      await CardChannel.instance.encodeJpeg(merged, fw, fh, out, quality: 95);
+      final after = await _decode(out, maxEdge: _previewEdge);
+      if (!live()) return after.dispose();
+      setState(() {
+        _decoded[out] = after;
+        _removedPath = out;
+        view
+          ..progress = 1
+          ..after = after
+          ..done = '${_people(result.removed)} Removed';
+      });
+      HapticFeedback.mediumImpact();
+    } catch (e) {
+      if (!mounted || _removal != view) return;
+      setState(() => _removal = null);
+      messenger.showSnackBar(SnackBar(content: Text(_removalError(e))));
+    }
+  }
+
+  static String _removalError(Object e) => switch (e) {
+    SocketException() ||
+    HttpException() ||
+    HandshakeException() ||
+    TimeoutException() => 'Couldn\'t Download The AI. Connect To The Internet And Try Again.',
+    FileSystemException(message: final m) when m.contains('damaged') => 'The AI Download Was Damaged. Try Again.',
+    PlatformException(message: final m) => 'Couldn\'t Remove People: ${m ?? 'Unknown Error'}',
+    _ => 'Couldn\'t Remove People: $e',
+  };
+
+  /// The result has wiped in: the edit now uses it (an undo step).
+  void _finishRemoval() {
+    final out = _removedPath;
+    setState(() => _removal = null);
+    if (out != null) _commit(_p.copyWith(noPeople: out));
+  }
+
+  void _cancelRemoval() {
+    // The models finish whatever they're on in the background; the result is dropped.
+    setState(() {
+      _removalCancelled = true;
+      _removal = null;
+    });
+  }
+
+  Widget _peopleButton() {
+    final done = _p.noPeople != null;
+    return Container(
+      color: surface,
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: _status != null
+              ? null
+              : done
+              ? () =>
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('Tap Undo To Bring Them Back')))
+              : _removePeople,
+          child: Ink(
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: done ? surfaceHigh : null,
+              gradient: done ? null : LinearGradient(colors: [accent, grape, sky]),
+              border: done ? Border.all(color: positive, width: 2) : null,
+              // The toy-button lip the app's other big buttons have.
+              boxShadow: done ? null : [BoxShadow(color: deeper(grape), offset: const Offset(0, 4))],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  done ? Icons.check_circle_rounded : Icons.auto_awesome_rounded,
+                  color: done ? positive : Colors.white,
+                  size: 22,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  done ? 'Background People Removed' : 'Remove People From Background',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: done ? ink : Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // --- Cropped preview for the Body and Adjust tools ------------------------------
 
   // Every digit of the crop: Rect.toString rounds to 0.1, so a small change to
   // the frame used to keep the old preview, squeezed into the new frame.
   String _cropKey(EditParams p) {
     final c = p.crop;
-    return '${p.quarterTurns}|${p.flipH}|${p.straighten}|${c.left},${c.top},${c.right},${c.bottom}';
+    return '${p.noPeople}|${p.quarterTurns}|${p.flipH}|${p.straighten}|${c.left},${c.top},${c.right},${c.bottom}';
   }
 
   void _ensureCropped() {
@@ -349,6 +604,8 @@ class _EditorScreenState extends State<EditorScreen> {
     if (src == null) return;
     // On the Crop tab, only once a change is let go of (not on every frame of a drag).
     if (_tool == _Tool.crop && (_h < 0 || !identical(_p, _history[_h]))) return;
+    // A people-removed copy that's still being decoded: wait for it.
+    if (_p.noPeople != null && !_decoded.containsKey(_p.noPeople)) return;
     final key = _cropKey(_p);
     if (key == _croppedFor) return;
     _croppedFor = key;
@@ -398,6 +655,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    _ensureDecoded();
     _ensureCropped();
     _ensurePose();
     final multi = widget.targets.length > 1;
@@ -433,7 +691,7 @@ class _EditorScreenState extends State<EditorScreen> {
               padding: const EdgeInsets.only(right: 12, left: 4),
               child: FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size(72, 40)),
-                onPressed: _status == null && _sourcePath != null ? _done : null,
+                onPressed: _status == null && _removal == null && _sourcePath != null ? _done : null,
                 child: const Text('Done'),
               ),
             ),
@@ -452,7 +710,7 @@ class _EditorScreenState extends State<EditorScreen> {
             : Column(
                 children: [
                   Expanded(child: _stage()),
-                  if (_preview != null) _panel(),
+                  if (_preview != null && _removal == null) ...[_peopleButton(), _panel()],
                 ],
               ),
       ),
@@ -476,9 +734,20 @@ class _EditorScreenState extends State<EditorScreen> {
         ],
       );
     }
+    final removal = _removal;
+    if (removal != null) {
+      return RemovePeopleOverlay(
+        before: src,
+        params: _p,
+        view: removal,
+        onCancel: _cancelRemoval,
+        onRevealed: _finishRemoval,
+      );
+    }
     Widget view;
     if (_comparing) {
-      view = CustomPaint(painter: _ImagePainter(src), size: Size.infinite); // ignores the crop: the whole original
+      // Ignores the crop: the whole original, people and all.
+      view = CustomPaint(painter: _ImagePainter(_original ?? src), size: Size.infinite);
     } else if (_tool == _Tool.crop) {
       view = _CropStage(
         image: src,

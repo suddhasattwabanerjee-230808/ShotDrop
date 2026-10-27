@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.0] - 2026-10-27 (build 26)
+
+Remove people from the background in one tap.
+
+- **Remove People From Background** in the editor: keeps who the photo is of (the main person, and anyone posing beside them), removes everyone else, and rebuilds the wall, building, sand or sky behind them. An animation shows who's found, who stays and who goes, then wipes the result in. Undo brings them back; Hold To Compare shows the original.
+- **AI downloaded once, on the first tap** (about 108 MB: a person finder, a person outliner and LaMa, all Apache 2.0 from OpenCV Zoo), checked, resumed if the connection drops, and kept through updates. Runs on the phone after that, offline.
+- **The fill is made of the photo's own pixels**: LaMa lays out what's behind the people, and ShotDrop's eraser redraws it from real texture in the same photo, so it's as sharp and grainy as the rest. Only the changed areas are touched; everything else stays full resolution.
+
 ## [0.8.8] - 2026-10-27 (build 25)
 
 Keep card sources unchanged and give control over saved story posts.

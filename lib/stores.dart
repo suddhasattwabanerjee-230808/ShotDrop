@@ -263,6 +263,10 @@ class UploadStore extends ChangeNotifier {
 
   /// Where an item's files live: `sources/<id>.jpg` and `uploads/<id>-<time>.jpg`.
   Future<String> sourcePathFor(String shotId) async => '${(await dir).path}/sources/${_safe(shotId)}.jpg';
+
+  /// A copy of the source with the background people removed (one each time, so undo can go back to the last).
+  Future<String> noPeoplePathFor(String shotId) async =>
+      '${(await dir).path}/sources/${_safe(shotId)}-nopeople-${DateTime.now().millisecondsSinceEpoch}.jpg';
   Future<String> exportPathFor(String shotId) async =>
       '${(await dir).path}/uploads/${_safe(shotId)}-${DateTime.now().millisecondsSinceEpoch}.jpg';
 
@@ -450,6 +454,8 @@ class UploadStore extends ChangeNotifier {
     final export = item.exportPath;
     if (export != null && !_fileUsedElsewhere(export, item.shotId)) _deleteQuietly(export);
     if (!_fileUsedElsewhere(item.sourcePath, item.shotId)) _deleteQuietly(item.sourcePath);
+    final noPeople = item.params.noPeople;
+    if (noPeople != null) _deleteQuietly(noPeople);
     final g = item.galleryUri;
     if (g != null) CardChannel.instance.deleteFromGallery(g).catchError((Object _) {});
   }
@@ -509,7 +515,11 @@ class UploadStore extends ChangeNotifier {
     var freed = 0;
     for (final i in items) {
       if (!i.published) continue;
-      final files = [File(i.sourcePath), if (i.exportPath case final e?) File(e)];
+      final files = [
+        File(i.sourcePath),
+        if (i.exportPath case final e?) File(e),
+        if (i.params.noPeople case final n?) File(n),
+      ];
       if (before != null) {
         // Posted before 0.6.0 (no date kept): when its newest copy was made.
         var at = i.postedAt;
@@ -534,7 +544,7 @@ class UploadStore extends ChangeNotifier {
   /// (an edit being saved). Returns the bytes freed.
   Future<int> clearUnused() async {
     final used = {
-      for (final i in items) ...[i.sourcePath, ?i.exportPath],
+      for (final i in items) ...[i.sourcePath, ?i.exportPath, ?i.params.noPeople],
     };
     // While publishing, the copies made for it are still needed.
     final stems = [

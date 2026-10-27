@@ -64,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       cache = await _size(await getTemporaryDirectory());
       posted = 0;
       for (final i in uploads.items.where((i) => i.published)) {
-        for (final path in [i.sourcePath, ?i.exportPath]) {
+        for (final path in [i.sourcePath, ?i.exportPath, ?i.params.noPeople]) {
           posted = posted! + await File(path).length().catchError((Object _) => 0);
         }
       }
